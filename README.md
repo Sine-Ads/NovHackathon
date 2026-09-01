@@ -1,7 +1,5 @@
 Haemophilia Intelligence Radar
 
-    AI-powered intelligence radar for haemophilia — detecting what changed, why it matters, who should act, and what to do next.
-
 Overview
 
 The Haemophilia Intelligence Radar converts scattered public information into structured, prioritized, and actionable intelligence.
@@ -9,7 +7,6 @@ The Haemophilia Intelligence Radar converts scattered public information into st
 Instead of simply summarizing articles, the system maintains a structured view of the haemophilia landscape, detects changes against previously known information, assesses their potential impact, and routes relevant signals to the appropriate business functions.
 
 For every significant signal, the radar answers:
-
     What changed?
     Why does it matter?
     Who should review it?
@@ -28,7 +25,6 @@ Identifies multiple sources covering the same underlying development and consoli
 Impact and Routing
 
 Assesses signals against the haemophilia landscape and routes relevant intelligence to appropriate business functions including:
-
     Medical Affairs
     Regulatory
     Market Access / HEOR
