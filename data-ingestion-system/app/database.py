@@ -20,6 +20,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -165,6 +166,33 @@ class SchedulingMetadataModel(Base):
             f"<SchedulingMetadataModel name={self.ingestor_name!r} "
             f"enabled={self.is_enabled} interval={self.run_interval_minutes}m>"
         )
+
+
+class ClassificationModel(Base):
+    """Stores the latest classification result for one ingested item."""
+
+    __tablename__ = "classifications"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    raw_item_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("raw_items.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    justification: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    method: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="classified")
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    classified_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+
+    __table_args__ = (
+        UniqueConstraint("raw_item_id", name="uq_classifications_raw_item_id"),
+        Index("ix_classifications_category", "category"),
+        Index("ix_classifications_status", "status"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -355,3 +383,39 @@ async def get_last_cursor(session: AsyncSession, ingestor_name: str) -> Optional
     """Return the last pagination cursor stored for an ingestor."""
     meta = await get_scheduling_metadata(session, ingestor_name)
     return meta.last_cursor if meta else None
+
+
+async def get_active_raw_items(session: AsyncSession) -> List[RawItemModel]:
+    """Return active ingested records for downstream processing."""
+    result = await session.execute(
+        select(RawItemModel)
+        .where(RawItemModel.is_active.is_(True))
+        .order_by(RawItemModel.date_ingested, RawItemModel.id)
+    )
+    return list(result.scalars().all())
+
+
+async def upsert_classification(
+    session: AsyncSession,
+    raw_item_id: str,
+    category: Optional[str],
+    justification: Optional[str],
+    method: Optional[str],
+    reason: Optional[str] = None,
+) -> ClassificationModel:
+    """Create or replace the latest classification for an ingested item."""
+    result = await session.execute(
+        select(ClassificationModel).where(ClassificationModel.raw_item_id == raw_item_id)
+    )
+    classification = result.scalar_one_or_none()
+    if classification is None:
+        classification = ClassificationModel(raw_item_id=raw_item_id)
+        session.add(classification)
+
+    classification.category = category
+    classification.justification = justification
+    classification.method = method
+    classification.status = "classified" if category else "failed"
+    classification.reason = reason
+    classification.classified_at = datetime.now(timezone.utc)
+    return classification

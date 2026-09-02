@@ -27,6 +27,7 @@ def validate_batch(scraped_papers):
  
         if not problems:
             Paper = {
+                "raw_item_id": Paper_Category.get("raw_item_id"),
                 "title": Paper_Category["Title"],
                 "abstract": Paper_Category["Abstract"],
                 "source": Paper_Category["Source"],

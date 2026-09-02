@@ -25,3 +25,255 @@ Requires-Dist: respx>=0.21.0; extra == "dev"
 Requires-Dist: pytest-cov>=5.0.0; extra == "dev"
 Requires-Dist: mypy>=1.10.0; extra == "dev"
 Requires-Dist: ruff>=0.4.0; extra == "dev"
+
+# Haemophilia Data Ingestion & Scheduling System
+
+A production-ready data acquisition, normalization, and scheduling pipeline that periodically ingests haemophilia and hemophilia-related information from multiple authoritative public sources into a centralized relational database.
+
+> [!NOTE]
+> **Pure Data Pipeline**: This system contains **NO AI integrations, LLM calls, or embeddings**. It focuses solely on data acquisition, transformation, schema normalization, rate limiting, and persistent scheduling.
+
+---
+
+## Supported Data Sources
+
+| Source | Identifier / Key Fields | Data Type | Authentication |
+|---|---|---|---|
+| **ClinicalTrials.gov** | NCTId, BriefTitle, Status, Conditions, Interventions | Clinical Trial Registrations | None required |
+| **PubMed (NCBI)** | PMID, ArticleTitle, Abstract, Authors, Journal, DOI | Peer-Reviewed Medical Literature | Optional API key (`NCBI_API_KEY`) |
+| **OpenFDA** | SafetyReportID, Drug Names, Reactions, Recall Numbers | FDA Adverse Events & Recalls | Optional API key (`OPENFDA_API_KEY`) |
+| **WHO ICTRP** | TrialID, Public/Scientific Title, Sponsor, Countries | Global Clinical Trial Registries | None (bulk export) |
+| **medRxiv** | DOI, Title, Abstract, Authors, Version, Category | Medical Preprints | None required |
+| **arXiv** | ArxivID, Title, Summary/Abstract, Authors, Categories | Life Sciences & PK Modeling Preprints | None required |
+| **USPTO Patents** | Application Number, Title, Abstract, Applicant | Patent Filings & Grants | API key required (`USPTO_API_KEY`) |
+| **SEC EDGAR** | CIK, Accession Number (ADSH), Form 10-K/10-Q, Excerpts | Corporate & Biotech Filings | User-Agent header (required by SEC) |
+
+---
+
+## Project Structure
+
+```
+data-ingestion-system/
+├── .venv/                         # Python virtual environment
+├── app/
+│   ├── __init__.py                # Package declaration
+│   ├── config.py                  # Pydantic Settings & environment validation
+│   ├── database.py                # SQLAlchemy 2.0 async ORM models & connection pooling
+│   ├── scheduler.py               # APScheduler background task runner & concurrency guard
+│   ├── main.py                    # Application lifecycle controller & CLI dispatcher
+│   ├── ingestors/
+│   │   ├── __init__.py            # Ingestor registry
+│   │   ├── base.py                # BaseIngestor ABC & RawItem dataclass
+│   │   ├── clinical_trials.py     # ClinicalTrials.gov API v2 ingestor
+│   │   ├── pubmed.py              # NCBI Entrez E-utilities (ESearch/EFetch) ingestor
+│   │   ├── openfda.py             # OpenFDA adverse events & enforcement ingestor
+│   │   ├── who_ictrp.py           # WHO ICTRP export ingestor
+│   │   ├── medrxiv.py             # medRxiv preprint ingestor
+│   │   ├── arxiv.py               # arXiv Atom feed ingestor
+│   │   ├── patents.py             # USPTO Open Data Portal ingestor
+│   │   └── sec_edgar.py           # SEC EDGAR full-text search ingestor
+│   └── utils/
+│       ├── __init__.py
+│       └── logging.py             # Structured logging configuration
+├── migrations/                    # Alembic database migrations
+│   ├── env.py
+│   ├── script.py.mako
+│   └── versions/
+│       └── 001_initial_schema.py
+├── tests/
+│   ├── conftest.py                # Pytest async fixtures & in-memory test database
+│   ├── test_database.py           # Database CRUD & idempotency unit tests
+│   ├── test_ingestors.py          # Unit tests with mocked HTTP responses for all 8 sources
+│   ├── test_scheduler.py          # Scheduler job configuration & concurrency tests
+│   └── fixtures/
+│       └── mock_data.py           # Mock API responses (JSON & XML)
+├── .env.example                   # Environment configuration template
+├── .env                           # Active environment configuration
+├── alembic.ini                    # Alembic migration configuration
+├── pyproject.toml                 # Project metadata & dependency definitions
+├── requirements.txt               # Production dependencies
+├── requirements-dev.txt           # Development & testing dependencies
+├── run.py                         # Top-level entry point
+└── README.md                      # Documentation
+```
+
+---
+
+## Database Schema Design
+
+The database uses a normalized relational schema with 3 core tables:
+
+### 1. `raw_items` (Unified Normalized Data Store)
+- `id` (VARCHAR 36, UUID Primary Key)
+- `source_name` (VARCHAR 100, Indexed) — e.g. `"ClinicalTrials.gov"`, `"PubMed (NCBI)"`
+- `source_id` (VARCHAR 500) — Original ID from source API (e.g. `NCT04567890`, `38123456`)
+- `source_url` (TEXT, Indexed) — Direct permalink to source record
+- `title` (TEXT) — Item title or headline
+- `raw_content` (TEXT) — Full parsed text (abstract, summary, protocol, or filing excerpt)
+- `date_published` (DATETIME with timezone) — Original publication or filing date
+- `date_ingested` (DATETIME with timezone, Indexed) — Ingestion timestamp
+- `metadata` (TEXT / JSON) — JSON string with source-specific structured attributes
+- `is_active` (BOOLEAN) — Active flag for soft deletion or tracking outdated records
+- **Constraint**: `UNIQUE(source_name, source_id)` ensures **idempotent upserts**.
+
+### 2. `ingestor_logs` (Audit Log)
+- `id` (INTEGER, Autoincrement Primary Key)
+- `ingestor_name` (VARCHAR 100, Indexed) — Identifier of the ingestor
+- `run_timestamp` (DATETIME with timezone) — Run start timestamp
+- `items_fetched` (INTEGER) — Total items returned by API
+- `items_stored` (INTEGER) — Newly inserted items
+- `items_skipped` (INTEGER) — Skipped or existing items updated
+- `success` (BOOLEAN) — True if run succeeded without unhandled errors
+- `error_message` (TEXT) — Exception traceback if failed
+- `last_cursor` (TEXT) — Pagination token/offset saved at run completion
+- `duration_seconds` (FLOAT) — Execution time in seconds
+
+### 3. `scheduling_metadata` (State Persistence)
+- `ingestor_name` (VARCHAR 100, Primary Key) — Ingestor identifier
+- `last_run_timestamp` (DATETIME with timezone) — Last execution timestamp
+- `next_scheduled_run` (DATETIME with timezone) — Next planned run
+- `run_interval_minutes` (INTEGER) — Configured run interval in minutes
+- `is_enabled` (BOOLEAN) — Enable/disable flag
+- `last_cursor` (TEXT) — Resumption token for paginated APIs
+- `consecutive_failures` (INTEGER) — Failure counter for alerting
+
+---
+
+## Setup Instructions
+
+### 1. Prerequisites
+- Python 3.9+ installed (`python3 --version`)
+
+### 2. Activate Virtual Environment
+The virtual environment is already created at `.venv`:
+```bash
+cd data-ingestion-system
+source .venv/bin/activate
+```
+
+### 3. Install Dependencies
+```bash
+pip install -r requirements-dev.txt
+pip install -e .
+```
+
+### 4. Configure Environment Variables
+Copy `.env.example` to `.env` and set your preferred settings:
+```bash
+cp .env.example .env
+```
+
+Key environment variables in `.env`:
+- `DATABASE_URL`: `sqlite+aiosqlite:///./haemophilia_data.db` (default) or PostgreSQL `postgresql+asyncpg://user:pass@localhost:5432/haemophilia_db`
+- `LOG_LEVEL`: `INFO` (or `DEBUG`, `WARNING`, `ERROR`)
+- `INGESTORS_ENABLED`: Comma-separated list of enabled ingestors
+- `NCBI_API_KEY`: (Optional) Free API key for PubMed
+- `OPENFDA_API_KEY`: (Optional) Free API key for OpenFDA
+- `USPTO_API_KEY`: (Optional) Free API key for USPTO Patents
+- `SEC_EDGAR_USER_AGENT`: `AppName admin@example.com` (required for SEC EDGAR)
+
+---
+
+## Usage & CLI Commands
+
+### List Registered Ingestors & Schedules
+```bash
+python run.py --list-ingestors
+```
+Output:
+```
+============================================================
+Registered Haemophilia Ingestors
+============================================================
+  • clinical_trials    [ENABLED ] Interval:   1440 min (ClinicalTrials.gov)
+  • pubmed             [ENABLED ] Interval:   1440 min (PubMed (NCBI))
+  • openfda            [ENABLED ] Interval:   1440 min (OpenFDA)
+  • who_ictrp          [ENABLED ] Interval:  10080 min (WHO ICTRP)
+  • medrxiv            [ENABLED ] Interval:   1440 min (medRxiv)
+  • arxiv              [ENABLED ] Interval:   1440 min (arXiv)
+  • patents            [ENABLED ] Interval:  10080 min (USPTO Patents)
+  • sec_edgar          [ENABLED ] Interval:  10080 min (SEC EDGAR)
+============================================================
+```
+
+### Initialize Database Schema
+```bash
+python run.py --init-db
+```
+
+### Run a Single Ingestor Once
+```bash
+python run.py --run-once clinical_trials
+python run.py --run-once pubmed
+python run.py --run-once openfda
+python run.py --run-once arxiv
+```
+
+### Run All Enabled Ingestors Once
+```bash
+python run.py --run-all-once
+```
+
+### Start Background Scheduler Mode
+Runs continuously in the foreground, executing jobs at their configured intervals:
+```bash
+python run.py
+```
+
+---
+
+## Database Migrations (Alembic)
+
+Run migrations to create or update schema:
+```bash
+alembic upgrade head
+```
+
+Create a new migration after model changes:
+```bash
+alembic revision --autogenerate -m "add new column"
+```
+
+---
+
+## Running Tests
+
+All unit tests use **mocked HTTP responses** with `respx` and in-memory SQLite fixtures (no live API calls):
+
+```bash
+pytest -v
+```
+
+Run tests with test coverage:
+```bash
+pytest --cov=app --cov-report=term-missing
+```
+
+---
+
+## Querying Ingested Data
+
+Using Python async session:
+```python
+import asyncio
+from sqlalchemy import select
+from app.database import get_session, RawItemModel
+
+async def sample_query():
+    async with get_session() as session:
+        stmt = select(RawItemModel).where(RawItemModel.source_name == "ClinicalTrials.gov").limit(5)
+        result = await session.execute(stmt)
+        items = result.scalars().all()
+        for item in items:
+            print(f"[{item.source_id}] {item.title}")
+            print(f"URL: {item.source_url}")
+            print(f"Metadata: {item.metadata_dict}\n")
+
+asyncio.run(sample_query())
+```
+
+Using SQLite CLI:
+```bash
+sqlite3 haemophilia_data.db "SELECT source_name, count(*) FROM raw_items GROUP BY source_name;"
+sqlite3 haemophilia_data.db "SELECT * FROM ingestor_logs ORDER BY run_timestamp DESC LIMIT 10;"
+```
