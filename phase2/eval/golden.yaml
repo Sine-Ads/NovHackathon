@@ -1,0 +1,131 @@
+# Golden question set for the Phase 2 assistants.
+#
+# Smoke tests prove the API responds. These prove the answers are correct.
+# Run with:  python scripts/run_eval.py
+#
+# Expectations key on STABLE source identifiers (NCT numbers, PMIDs) rather than
+# the sidecar's UUIDs, which change whenever Phase 1 re-ingests.
+#
+# Fields:
+#   expect_route            router must pick this path
+#   expect_numbers          every number must appear verbatim in the answer
+#   expect_contains         case-insensitive substrings that must appear
+#   expect_absent           substrings that must NOT appear
+#   expect_confidence       allowed confidence levels
+#   must_retrieve_any_of    at least one of these source_ids in the evidence
+#   assert_citations_valid  every [id:...] cited must have been retrieved
+#   scope                   global (default) or item
+#   item_source_id          for scope: item — which record to open
+
+questions:
+
+  # ---- factual counts: the number must come from SQL, never the model -------
+  - id: count_recruiting
+    category: factual_count
+    question: "How many haemophilia clinical trials are currently recruiting?"
+    expect_route: aggregate
+    expect_numbers: [90]
+    expect_confidence: [supported, inferred]
+
+  - id: count_terminated
+    category: factual_count
+    question: "How many trials were terminated?"
+    expect_route: aggregate
+    expect_numbers: [71]
+    expect_confidence: [supported, inferred]
+
+  - id: top_sponsor
+    category: factual_count
+    question: "Which sponsor is running the most trials, and how many?"
+    expect_route: aggregate
+    expect_contains: ["Novo Nordisk"]
+    expect_numbers: [105]
+    expect_confidence: [supported, inferred]
+
+  - id: corpus_size
+    category: factual_count
+    question: "How many records are in the corpus in total?"
+    expect_numbers: [1399]
+    expect_confidence: [supported, inferred]
+
+  # ---- semantic search: paraphrase must still retrieve -----------------------
+  - id: semantic_gene_therapy
+    category: semantic_search
+    question: "What gene therapy work is happening in haemophilia B?"
+    expect_route: retrieval
+    must_retrieve_any_of: ["NCT05203679", "NCT03569891", "NCT00979238"]
+    expect_confidence: [supported, inferred]
+    assert_citations_valid: true
+
+  - id: semantic_joint_damage
+    category: semantic_search
+    question: "What do we know about long-term joint damage in patients?"
+    expect_route: retrieval
+    expect_confidence: [supported, inferred]
+    assert_citations_valid: true
+
+  # ---- source-specific: must respect what a source actually contains ---------
+  - id: sec_companies
+    category: source_specific
+    question: "Which companies discuss haemophilia in their SEC filings?"
+    expect_contains: ["uniQure"]
+    # The SEC rows are 154-character index stubs; the answer must say so rather
+    # than pretending to have read the filings.
+    expect_confidence: [supported, inferred, insufficient]
+
+  # ---- insufficient evidence: the highest-value cases ------------------------
+  # A system that confidently answers these will confidently mislead a
+  # stakeholder. Abstention recall here matters more than any UI work.
+  - id: insufficient_pricing
+    category: insufficient_evidence
+    question: "What is the reimbursement price of Hemlibra in Germany?"
+    expect_confidence: [insufficient]
+    expect_absent: ["€", "EUR per", "costs approximately"]
+
+  - id: insufficient_interventions
+    category: insufficient_evidence
+    question: "Which specific drug was administered in trial NCT01395810?"
+    # interventions[] is empty for all 992 trials, so no drug name is knowable.
+    expect_confidence: [insufficient, inferred]
+
+  - id: insufficient_approval
+    category: insufficient_evidence
+    question: "Has the EMA approved fitusiran, and on what date?"
+    expect_confidence: [insufficient, inferred]
+
+  # ---- cross-document comparison --------------------------------------------
+  - id: cross_doc_sponsors
+    category: cross_document
+    question: "Compare Novo Nordisk and Bayer trial activity, and tell me what to watch."
+    expect_route: both
+    expect_numbers: [105, 58]
+    expect_confidence: [supported, inferred]
+
+  - id: cross_doc_planning
+    category: cross_document
+    question: "What are the main themes across the recruiting trials right now?"
+    expect_confidence: [supported, inferred]
+
+  # ---- citation correctness --------------------------------------------------
+  - id: citation_validity
+    category: citation_correctness
+    question: "Summarise the lentiviral gene therapy trials in the corpus."
+    assert_citations_valid: true
+    expect_confidence: [supported, inferred]
+
+  # ---- item scope: must not widen itself ------------------------------------
+  - id: item_in_scope
+    category: item_scope
+    scope: item
+    item_source_id: "NCT01395810"
+    question: "What was this trial evaluating?"
+    expect_confidence: [supported, inferred]
+
+  - id: item_out_of_scope
+    category: item_scope
+    scope: item
+    item_source_id: "NCT01395810"
+    question: "How many trials in the whole corpus are recruiting?"
+    # The item assistant must decline and redirect rather than answer globally.
+    expect_confidence: [insufficient, inferred]
+    expect_absent: ["90 trials are recruiting"]
