@@ -44,15 +44,20 @@ def validate_batch(scraped_papers):
  
  
 def rules_layer(clean_Paper):
+    # ClinicalTrials.gov reports status as an uppercase enum (TERMINATED,
+    # RECRUITING). The comparisons below are written in lowercase, so without
+    # normalising here no trial-status rule can ever fire and every trial
+    # falls through to the LLM.
+    trial_status = (clean_Paper.get("trial_status") or "").strip().lower()
     if clean_Paper.get("retracted") and clean_Paper.get("citation_count") > 0:
         return "proven_false_but_useful"
     elif clean_Paper.get("retracted") and clean_Paper.get("citation_count") == 0:
         return "proven_false"
-    elif clean_Paper.get("trial_status") == "terminated":
+    elif trial_status == "terminated":
         return "proven_false"
     elif clean_Paper.get("publication_type") == "meta_analysis" or clean_Paper.get("publication_type") == "systematic_review" or clean_Paper.get("publication_type") == "RCT":
         return "proven_right"
-    elif clean_Paper.get("publication_type") == "case_report" or clean_Paper.get("publication_type") == "preprint" or clean_Paper.get("trial_status") == "recruiting":
+    elif clean_Paper.get("publication_type") == "case_report" or clean_Paper.get("publication_type") == "preprint" or trial_status == "recruiting":
         return "still_working_on"
     else:
         return None

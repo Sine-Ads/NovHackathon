@@ -39,7 +39,8 @@ def main() -> int:
     print(f"sidecar database    : {config.sidecar_db_path()}")
     print(f"LLM model           : {config.LLM_MODEL}")
     print(f"embedding model     : {config.EMBED_MODEL}")
-    print(f"HF_TOKEN present    : {'yes' if config.HF_TOKEN else 'NO (chat/summary will fail)'}")
+    print(f"inference endpoint  : {config.LLM_BASE_URL or 'HuggingFace serverless'}")
+    print(f"LLM_API_KEY present : {'yes' if config.LLM_API_KEY else 'NO (chat/summary will fail)'}")
 
     conn = source_db.connect()
     try:

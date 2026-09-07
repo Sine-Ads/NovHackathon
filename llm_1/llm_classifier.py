@@ -6,10 +6,25 @@ from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
 
 load_dotenv()
-MODEL = os.environ.get("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
-HF_TOKEN = (os.environ.get("HF_TOKEN") or "").strip() or None
+MODEL = (
+    os.environ.get("HF_MODEL")
+    or os.environ.get("LLM_MODEL")
+    or "meta-llama/Llama-3.1-8B-Instruct"
+)
+# One key shared with the Phase 2 assistant; HF_TOKEN still accepted.
+HF_TOKEN = (
+    (os.environ.get("LLM_API_KEY") or os.environ.get("HF_TOKEN") or "").strip() or None
+)
 PROVIDER = os.environ.get("HF_PROVIDER", "auto")
-client = InferenceClient(provider=PROVIDER, token=HF_TOKEN)
+
+# Any OpenAI-compatible endpoint (Gemini, Groq, OpenRouter, local Ollama) works
+# when LLM_BASE_URL is set: InferenceClient appends /chat/completions and the
+# model name travels in the payload. Blank keeps HuggingFace serverless.
+BASE_URL = os.environ.get("LLM_BASE_URL") or None
+if BASE_URL:
+    client = InferenceClient(base_url=BASE_URL, api_key=HF_TOKEN)
+else:
+    client = InferenceClient(provider=PROVIDER, token=HF_TOKEN)
 VALID_CATEGORIES = {"proven_right", "proven_false", "proven_false_but_useful", "still_working_on"}
 COUNCIL_MODELS = tuple(
     # Verify each model's Inference Providers listing before running. The first
@@ -80,7 +95,7 @@ def classify_with_llm(paper, model: Optional[str] = None):
         return {
             "category": None,
             "justification": None,
-            "reason": "HF_TOKEN is not set in this terminal",
+            "reason": "LLM_API_KEY is not set in this terminal",
         }
 
     selected_model = model or MODEL
@@ -110,7 +125,7 @@ def classify_with_llm(paper, model: Optional[str] = None):
 def classify_with_council(paper):
     """Classify with every council model and require a strict majority."""
     if not HF_TOKEN:
-        return {"category": None, "justification": None, "reason": "HF_TOKEN is not set in this terminal"}
+        return {"category": None, "justification": None, "reason": "LLM_API_KEY is not set in this terminal"}
 
     responses: List[Dict[str, str]] = []
     failures: List[str] = []

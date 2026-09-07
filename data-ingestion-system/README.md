@@ -51,7 +51,8 @@ data-ingestion-system/
 │   ├── env.py
 │   ├── script.py.mako
 │   └── versions/
-│       └── 001_initial_schema.py
+│       ├── 001_initial_schema.py
+│       └── 002_classifications.py
 ├── tests/
 │   ├── conftest.py                # Pytest async fixtures & in-memory test database
 │   ├── test_database.py           # Database CRUD & idempotency unit tests
@@ -59,7 +60,7 @@ data-ingestion-system/
 │   ├── test_scheduler.py          # Scheduler job configuration & concurrency tests
 │   └── fixtures/
 │       └── mock_data.py           # Mock API responses (JSON & XML)
-├── .env.example                   # Environment configuration template
+├── .env -> ../.env                # symlink to the shared root .env
 ├── .env                           # Active environment configuration
 ├── alembic.ini                    # Alembic migration configuration
 ├── pyproject.toml                 # Project metadata & dependency definitions
@@ -130,9 +131,10 @@ pip install -e .
 ```
 
 ### 4. Configure Environment Variables
-Copy `.env.example` to `.env` and set your preferred settings:
+Configuration comes from the shared `.env` at the repository root; this
+directory's `.env` is a symlink to it. To inspect what is in effect:
 ```bash
-cp .env.example .env
+cat .env
 ```
 
 Key environment variables in `.env`:

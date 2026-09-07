@@ -1,0 +1,1273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Haemophilia Intelligence Radar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F6F7F9; --surface:#FFFFFF; --border:#E1E4E9;
+  --ink:#1A2130; --ink-muted:#5B6472;
+  --accent:#1F5F5B; --accent-soft:#E4EEEC;
+  --high:#B8452F; --high-soft:#F6E6E2;
+  --medium:#B07A2E; --medium-soft:#F5EBDC;
+  --low:#7C8797; --low-soft:#EEF0F2;
+  --closed:#4B7A5E;
+  --sans:'Inter',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#333A45;font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased}
+
+.deck{display:flex;flex-direction:column;align-items:center;gap:24px;padding:24px}
+.slide{
+  width:1280px;height:720px;background:var(--surface);position:relative;
+  padding:38px 50px 42px;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 2px 24px rgba(0,0,0,.35);flex:none;
+}
+/* ---- slide furniture ---- */
+.eyebrow{font:600 10.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+h1{font-size:46px;line-height:1.08;font-weight:700;letter-spacing:-.022em}
+h2{font-size:29px;line-height:1.16;font-weight:600;letter-spacing:-.018em;max-width:20ch}
+h2.wide{max-width:32ch}
+.sub{font-size:14px;line-height:1.45;color:var(--ink-muted);margin-top:9px;max-width:78ch}
+.body{margin-top:18px;flex:1;min-height:0}
+.foot{position:absolute;left:50px;right:50px;bottom:16px;display:flex;justify-content:space-between;
+  font:500 10.5px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--low)}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---- the highlight system: exactly one key line per slide ---- */
+.key{
+  border-left:4px solid var(--accent);padding:9px 0 9px 16px;margin:14px 0 0;
+  font-size:18.5px;line-height:1.32;font-weight:600;color:var(--accent);max-width:62ch;letter-spacing:-.012em;
+}
+.key .plain{color:var(--ink);font-weight:500}
+
+/* ---- status chips ---- */
+.chip{display:inline-flex;align-items:center;gap:6px;font:600 10px/1 var(--mono);
+  letter-spacing:.1em;text-transform:uppercase;padding:5px 9px;border-radius:2px;white-space:nowrap}
+.chip.built{background:var(--accent-soft);color:var(--accent)}
+.chip.designed{background:var(--medium-soft);color:var(--medium)}
+.chip.partial{background:var(--low-soft);color:var(--low)}
+.chip.notbuilt{background:var(--high-soft);color:var(--high)}
+
+/* ---- layout helpers ---- */
+/* No height:100% — grid already stretches columns to the tallest, and forcing
+   full body height double-counts on any slide where .cols has siblings. */
+.cols{display:grid;gap:26px;align-items:stretch;min-height:0}
+.c2{grid-template-columns:1fr 1fr}
+.c2w{grid-template-columns:1.15fr .85fr}
+.c3{grid-template-columns:repeat(3,1fr)}
+.stack{display:flex;flex-direction:column;gap:11px}
+
+/* ---- tables ---- */
+table{border-collapse:collapse;width:100%;font-size:12px}
+th{text-align:left;font:600 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--low);padding:0 10px 6px 0;border-bottom:1px solid var(--border)}
+td{padding:6px 10px 6px 0;border-bottom:1px solid var(--border);vertical-align:top;line-height:1.4}
+tr:last-child td{border-bottom:none}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;padding-right:18px}
+.mono{font-family:var(--mono)}
+.muted{color:var(--ink-muted)}
+.dim{color:var(--low)}
+
+/* ---- stat tiles ---- */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border)}
+.stat{padding:15px 18px 15px 0;border-right:1px solid var(--border)}
+.stat:last-child{border-right:none}
+.stat .v{font:600 33px/1 var(--sans);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.stat .l{font-size:11.5px;color:var(--ink-muted);margin-top:6px;line-height:1.35}
+
+/* ---- signal card ---- */
+.card{background:var(--paper);border:1px solid var(--border);border-left:4px solid var(--high);padding:14px 16px}
+.card.silence{border-left-color:var(--accent)}
+.card .hdr{display:flex;gap:7px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.tag{font:600 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;padding:4px 8px;border-radius:2px}
+.tag.high{background:var(--high-soft);color:var(--high)}
+.tag.reg{background:var(--low-soft);color:var(--ink-muted)}
+.tag.acc{background:var(--accent-soft);color:var(--accent)}
+.fld{margin-bottom:9px}
+.fld:last-child{margin-bottom:0}
+.fld .k{font:600 9.5px/1 var(--mono);letter-spacing:.11em;text-transform:uppercase;color:var(--low);margin-bottom:5px}
+.fld .v{font-size:12.5px;line-height:1.42}
+.diff{font-family:var(--mono);font-size:12.5px;line-height:1.6}
+.was{color:var(--low);text-decoration:line-through}
+.now{color:var(--accent);font-weight:600}
+
+/* ---- pipeline ---- */
+.pipe{display:flex;align-items:stretch;gap:0;font-size:11px;margin:6px 0 0}
+.pstep{flex:1;border:1px solid var(--border);border-right:none;padding:8px 7px;background:var(--paper);text-align:center}
+.pstep:last-child{border-right:1px solid var(--border)}
+.pstep.hl{background:var(--accent);border-color:var(--accent);color:#fff}
+.pstep .t{font-weight:600;font-size:11.5px;line-height:1.25}
+.pstep .s{font-family:var(--mono);font-size:9px;color:var(--low);margin-top:4px;line-height:1.3}
+.pstep.hl .s{color:rgba(255,255,255,.72)}
+
+/* ---- misc ---- */
+ul{list-style:none}
+li{position:relative;padding-left:16px;margin-bottom:7px;font-size:13px;line-height:1.45}
+li:before{content:"";position:absolute;left:0;top:8px;width:5px;height:5px;background:var(--accent);border-radius:50%}
+li b{font-weight:600}
+.box{border:1px solid var(--border);padding:13px 15px;background:var(--paper)}
+.box h4{font:600 9.5px/1 var(--mono);letter-spacing:.11em;text-transform:uppercase;color:var(--low);margin-bottom:9px}
+.vs{border:1px solid var(--border);padding:15px;height:100%;display:flex;flex-direction:column}
+.vs.bad{background:var(--paper)}
+.vs.good{background:var(--accent-soft);border-color:var(--accent)}
+.vs h4{font:600 9.5px/1 var(--mono);letter-spacing:.11em;text-transform:uppercase;margin-bottom:10px}
+.vs.bad h4{color:var(--low)} .vs.good h4{color:var(--accent)}
+code{font-family:var(--mono);font-size:12.5px;background:var(--paper);padding:1px 5px;border:1px solid var(--border)}
+pre{font-family:var(--mono);font-size:10.5px;line-height:1.5;background:var(--paper);border:1px solid var(--border);
+  padding:11px 13px;overflow:auto;white-space:pre}
+.slot{border:1px dashed var(--low);background:var(--paper);display:flex;flex-direction:column;gap:5px;align-items:center;justify-content:center;
+  color:var(--low);font:500 12px/1.5 var(--mono);text-align:center;padding:20px}
+
+/* ---- title slide ---- */
+.title-slide{justify-content:center}
+.rule{height:3px;background:var(--accent);width:64px;margin:0 0 30px}
+.legend{display:flex;gap:10px;margin-top:34px;flex-wrap:wrap;align-items:center}
+.legend .lbl{font:600 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--low);margin-right:2px}
+.team{margin-top:auto;padding-top:26px;border-top:1px solid var(--border);display:flex;justify-content:space-between;
+  font-size:12.5px;color:var(--ink-muted);line-height:1.6}
+.divider{background:var(--ink);color:#fff}
+.divider h1{max-width:24ch}
+.divider .sub{color:rgba(255,255,255,.66)}
+.divider .foot{color:rgba(255,255,255,.4)}
+
+/* ---- nav + print ---- */
+#nav{position:fixed;right:18px;bottom:18px;background:rgba(26,33,48,.92);color:#fff;font:500 11px/1 var(--mono);
+  padding:9px 13px;border-radius:3px;z-index:99;letter-spacing:.06em}
+.overflowing{outline:3px solid var(--high);outline-offset:-3px}
+.overflowing:after{content:"CONTENT OVERFLOWS FRAME";position:absolute;top:8px;right:8px;
+  background:var(--high);color:#fff;font:600 10px/1 var(--mono);letter-spacing:.1em;padding:6px 9px;z-index:5}
+@media print{
+  .overflowing{outline:none}
+  .overflowing:after{display:none}
+  html,body{background:#fff}
+  .deck{gap:0;padding:0}
+  .slide{box-shadow:none;page-break-after:always;break-after:page;margin:0}
+  #nav{display:none}
+  @page{size:1280px 720px;margin:0}
+}
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+<!-- 1 ─────────────────────────────────────────────────────────── -->
+<section class="slide title-slide">
+  <div class="rule"></div>
+  <h1>Haemophilia<br>Intelligence Radar</h1>
+  <p class="sub" style="font-size:19px;max-width:66ch;margin-top:20px">
+    Detects <b>what changed</b>, explains <b>why it matters</b>, names <b>who reviews it</b>,
+    and proposes <b>what action is required</b>.
+  </p>
+  <div class="key" style="margin-top:26px">
+    A news dashboard summarises documents.<br>
+    <span class="plain">This maintains state, and reports the transitions against it.</span>
+  </div>
+  <div class="legend">
+    <span class="lbl">Status legend</span>
+    <span class="chip built">Built</span>
+    <span class="chip partial">Partial</span>
+    <span class="chip designed">Designed</span>
+    <span class="chip notbuilt">Not built</span>
+    <span class="dim" style="font-size:12px;margin-left:6px">— every capability in this deck carries one</span>
+  </div>
+  <div class="team">
+    <div><b>Catalyst</b> · Manipal Institute of Technology, Bengaluru<br>
+      <span class="dim">Ch. Achyuth (lead) · Anagha Ravindran · Nishita Pagaku · Krishna Gunjan · Aditya Alur</span></div>
+    <div style="text-align:right">Novo Nordisk Rare Disease Hackathon<br>
+      <span class="dim">Faculty mentor · Dr. Sravani Vemulapalli</span></div>
+  </div>
+</section>
+
+<!-- 2 ─────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">Executive summary</div>
+  <h2 class="wide">If you read one slide, read this one</h2>
+  <div class="body">
+    <div class="stats" style="margin-bottom:26px">
+      <div class="stat"><div class="v">1,399</div><div class="l">records under monitoring,<br>4 live public sources</div></div>
+      <div class="stat"><div class="v">134</div><div class="l">forward-dated commitments<br>the Radar would be watching</div></div>
+      <div class="stat"><div class="v">3 of 15</div><div class="l">golden questions the system<br>must <i>refuse</i> to answer</div></div>
+      <div class="stat"><div class="v">0</div><div class="l">numbers in any answer that<br>came from a language model</div></div>
+    </div>
+    <div class="cols c2">
+      <div>
+        <ul>
+          <li><b>We report change, not content.</b> Versioned state and a diff, so the output is <code>Phase 2 → Phase 3</code>, not "an article mentioned a trial".</li>
+          <li><b>We report absence.</b> A promised readout that never arrives is the signal. No document exists, so no summariser can find it.</li>
+          <li><b>We refuse.</b> A deterministic gate runs before generation; with thin evidence no model is called at all.</li>
+        </ul>
+      </div>
+      <div>
+        <ul>
+          <li><b>We get corrected.</b> Reviewer feedback is structured, not free text, so it can move scoring weights rather than just a record.</li>
+          <li><b>We state our limits.</b> Every capability on every slide carries a status chip, and what does not work is named on the slide where it would otherwise be claimed.</li>
+        </ul>
+        <div class="key" style="margin-top:18px;font-size:19px">
+          The hard part was never summarising.<br>
+          <span class="plain">It was noticing.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>Haemophilia Intelligence Radar</span><span class="num">02</span></div>
+</section>
+
+<!-- 3 ─────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">The problem</div>
+  <h2>The cost is not missing information. It is late recognition.</h2>
+  <div class="body">
+    <div class="cols c2w">
+      <div>
+        <p class="sub" style="margin-top:0">
+          Haemophilia intelligence arrives scattered across registries, regulators, journals, HTA bodies,
+          congresses and investor pages — the same development, in different formats, on different days.
+        </p>
+        <p class="sub">Consider one real shape of event:</p>
+        <div class="box" style="margin-top:16px">
+          <h4>What actually happens</h4>
+          <p style="font-size:14.5px;line-height:1.6">
+            A competitor's gene-therapy programme completes Phase 3 enrolment.<br><br>
+            There is <b>no press release</b>. There is <b>no article</b>.<br>
+            A single field in a public registry changes from
+            <span class="mono was">RECRUITING</span> to
+            <span class="mono now">ACTIVE_NOT_RECRUITING</span>.
+          </p>
+        </div>
+        <div class="key">
+          There is nothing to summarise —<br>
+          <span class="plain">and that is exactly when it matters most.</span>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="box">
+          <h4>Why a summariser cannot help</h4>
+          <ul style="margin-top:2px">
+            <li>It answers <i>"what does this document say?"</i></li>
+            <li>The event is a <b>field change</b>, not a document</li>
+            <li>The same item across three sources reads as three findings</li>
+            <li>A promise that was never kept produces no document at all</li>
+          </ul>
+        </div>
+        <div class="box" style="border-color:var(--accent);background:var(--accent-soft)">
+          <h4 style="color:var(--accent)">What is actually needed</h4>
+          <p style="font-size:14.5px;line-height:1.6">
+            A system that already knows what it knew yesterday, and can therefore
+            tell you what is different today — including the things that were
+            supposed to be different and are not.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>The problem</span><span class="num">03</span></div>
+</section>
+
+<!-- 4 ─────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">The difference</div>
+  <h2 class="wide">A news dashboard reports articles. The Radar reports state transitions.</h2>
+  <div class="body">
+    <div class="cols c2" style="align-items:stretch">
+      <div class="vs bad">
+        <h4>What a summariser produces <span class="dim" style="font-weight:400;text-transform:none;letter-spacing:0">— and what Citeline, Cortellis and Evaluate produce</span></h4>
+        <p style="font-size:15px;line-height:1.6;color:var(--ink-muted)">
+          "A recent article discusses ongoing developments in gene therapy for
+          haemophilia B, noting that several competitor programmes are advancing
+          through clinical stages."
+        </p>
+        <div style="margin-top:auto;padding-top:20px">
+          <div class="fld"><div class="k">Actionable?</div>
+            <div class="v muted">No owner. No date. No claim you can check. Nothing a reviewer can argue with.</div></div>
+          <div class="fld"><div class="k">The incumbents</div>
+            <div class="v muted" style="font-size:12.5px">Citeline, Cortellis and Evaluate are excellent <i>registries</i> —
+            they will tell you a trial's status today. None of them tells you it <b>changed on Tuesday</b>, who owns
+            that, or that a promised readout is now 41 days late.</div></div>
+        </div>
+      </div>
+      <div class="vs good">
+        <h4>What the Radar produces</h4>
+        <div class="fld"><div class="k">What changed</div>
+          <div class="v diff">NCT0XXXXXXX &nbsp;<span class="was">Phase 2</span> → <span class="now">Phase 3</span><br>
+          <span class="dim">overall_status · detected 12 Mar</span></div></div>
+        <div class="fld"><div class="k">Why it matters</div>
+          <div class="v">A competing asset advances in a reference geography, changing the near-term access picture for the same indication.</div></div>
+        <div class="fld"><div class="k">Who reviews</div>
+          <div class="v">Clinical Development <span class="dim">(primary)</span> · Market Access <span class="dim">(informed)</span></div></div>
+        <div class="fld"><div class="k">Action</div>
+          <div class="v mono" style="font-size:12.5px">LABEL_IMPACT_ASSESSMENT · SLA 7 d · NEW</div></div>
+        <div class="fld" style="margin-top:auto;padding-top:14px">
+          <div class="k">Evidence</div>
+          <div class="v"><span class="mono" style="font-size:12px">registry record + exact source span, quoted inline</span></div></div>
+      </div>
+    </div>
+    <div class="box" style="margin-top:18px;background:var(--accent-soft);border-color:var(--accent)">
+      <p style="font-size:14px;line-height:1.55"><b>Monday, 09:10.</b> A Market Access lead opens one queue — not a
+      feed of articles, but <b>six cards that changed since Friday</b>, ranked. Three are already closed by a
+      colleague. She reads the diff on the top one, disagrees with its urgency, clicks
+      <span class="mono" style="font-size:12px">too early-stage</span>, and reassigns it. That correction re-weights
+      how the next comparable signal scores. Total time: four minutes.</p>
+    </div>
+    <div class="key" style="margin-top:16px">
+      One card per <span style="text-decoration:underline">change</span>, not one card per headline.
+    </div>
+  </div>
+  <div class="foot"><span>The difference</span><span class="num">04</span></div>
+</section>
+
+
+<!-- 5 ─────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">The atomic unit &nbsp;·&nbsp; <span class="chip built" style="vertical-align:1px">Built</span></div>
+  <h2 class="wide">Every signal answers the same four questions, in the same order</h2>
+  <div class="body">
+    <div class="cols c2w">
+      <div class="card">
+        <div class="hdr">
+          <span class="tag high">High</span><span class="tag reg">Regulatory</span><span class="tag reg">Haemophilia B</span>
+          <span class="dim mono" style="margin-left:auto;font-size:10.5px">SIG-0412</span>
+        </div>
+        <div class="fld"><div class="k">What changed</div><div class="v diff">
+          Regulatory status &nbsp;<span class="was">FILED</span> → <span class="now">APPROVED</span><br>
+          Geography &nbsp;EU &nbsp;·&nbsp; <span class="dim">detected 12 Mar</span></div></div>
+        <div class="fld"><div class="k">Why it matters</div><div class="v">
+          A competing asset gains market authorisation in a reference geography,
+          changing the near-term access and positioning picture for the same indication.</div></div>
+        <div class="fld"><div class="k">Who should review</div><div class="v">
+          Regulatory <span class="dim">(primary)</span> · Market Access <span class="dim">(informed)</span>
+          — <i class="dim">reason shown, not implied</i></div></div>
+        <div class="fld"><div class="k">Action</div><div class="v mono" style="font-size:12.5px">
+          LABEL_IMPACT_ASSESSMENT<br>owner Regulatory · SLA 7 d · status NEW</div></div>
+        <div class="fld"><div class="k">Evidence</div><div class="v">
+          <span class="tag acc">EMA CHMP</span> <span class="tag acc">company release</span>
+          <span class="dim" style="font-size:12px">&nbsp;3 documents → 1 event</span></div></div>
+      </div>
+      <div class="stack">
+        <div class="box"><h4>Rendered, not written</h4>
+          <p style="font-size:14px;line-height:1.55">The <b>what changed</b> line is generated from the diff between two
+          stored states. It is not free text from a model, so it cannot drift from what the source actually says.</p></div>
+        <div class="box"><h4>Provenance or abstention</h4>
+          <p style="font-size:14px;line-height:1.55">Every claim carries a source URL and an exact supporting quote.
+          A claim that fails provenance validation is <b>withheld</b> — the card shows an explicit
+          <code>insufficient evidence</code> state rather than a confident assertion.</p></div>
+        <div class="box"><h4>An artifact, not a notification</h4>
+          <p style="font-size:14px;line-height:1.55">The card carries an owner, an SLA and a lifecycle
+          (<span class="mono" style="font-size:12px">NEW → TRIAGED → ACTIONED → CLOSED</span>).
+          A reading task becomes a review-and-approve task, already assembled.</p></div>
+      </div>
+    </div>
+    <div class="key" style="margin-top:20px;font-size:20px">
+      Three documents collapse into one event.
+      <span class="plain">Deduplication happens before a human ever sees it.</span>
+    </div>
+  </div>
+  <div class="foot"><span>The signal card</span><span class="num">05</span></div>
+</section>
+
+<!-- 15 ────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">The prototype &nbsp;·&nbsp; <span class="chip built" style="vertical-align:1px">Built</span></div>
+  <h2 class="wide">A working system against 1,399 real records — not a mock-up</h2>
+  <div class="body">
+    <div class="slot" style="height:300px">DEMO VIDEO<br><span style="font-size:11px">embed / link / QR</span></div>
+    <div class="cols c3" style="margin-top:20px">
+      <div>
+        <div class="slot" style="height:78px;font-size:10.5px">RADAR FEED</div>
+        <p style="font-size:12px;line-height:1.4;margin-top:8px"><b>Prioritised feed.</b> Role-filtered queues, newest change first.</p>
+      </div>
+      <div>
+        <div class="slot" style="height:78px;font-size:10.5px">SIGNAL DETAIL</div>
+        <p style="font-size:12px;line-height:1.4;margin-top:8px"><b>Diff panel and evidence drawer.</b> Every claim expands to its source span.</p>
+      </div>
+      <div>
+        <div class="slot" style="height:78px;font-size:10.5px">ASSISTANT — REFUSING</div>
+        <p style="font-size:12px;line-height:1.4;margin-top:8px"><b>The abstention path.</b> The system declining a question it cannot support.</p>
+      </div>
+    </div>
+    <div class="key" style="margin-top:12px;font-size:17px">
+      The demo includes a question the system refuses.
+      <span class="plain">Not an oversight — the capability we most want reviewed.</span>
+    </div>
+  </div>
+  <div class="foot"><span>The prototype</span><span class="num">15</span></div>
+</section>
+
+<!-- 6 ─────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">Architecture &nbsp;·&nbsp; as built</div>
+  <h2 class="wide">Three stages, two databases, one boundary that is enforced rather than agreed</h2>
+  <div class="body">
+    <div class="pipe">
+      <div class="pstep"><div class="t">Ingest</div><div class="s">8 async connectors</div></div>
+      <div class="pstep"><div class="t">Dedup</div><div class="s">idempotent upsert</div></div>
+      <div class="pstep"><div class="t">Classify</div><div class="s">rules, then LLM</div></div>
+      <div class="pstep"><div class="t">Chunk + embed</div><div class="s">FTS5 + ONNX</div></div>
+      <div class="pstep"><div class="t">Snapshot</div><div class="s">versioned state</div></div>
+      <div class="pstep"><div class="t">Diff</div><div class="s">old → new</div></div>
+      <div class="pstep"><div class="t">Score + route</div><div class="s">urgency, owner</div></div>
+      <div class="pstep hl"><div class="t">Signal + action</div><div class="s">card, SLA</div></div>
+    </div>
+    <div class="cols c2w" style="margin-top:24px">
+      <div>
+        <pre>data-ingestion-system/          Phase 1 · frozen · no AI by design
+   httpx · SQLAlchemy async · APScheduler
+        │
+        └──▶  haemophilia_data.db
+                 raw_items · ingestor_logs
+                 scheduling_metadata · classifications
+        │
+llm_1/                          rules layer, then LLM fallback
+        │
+   ════ opened mode=ro · read-only · never written ════
+        ▼
+phase2/                         retrieval · scoring · API · UI
+   hybrid FTS5 + vector → RRF → evidence ranking
+   confidence gate → generation (or abstention)
+        └──▶  phase2/data/phase2.db   every write lands here</pre>
+      </div>
+      <div class="stack">
+        <div class="box" style="border-color:var(--accent)">
+          <h4 style="color:var(--accent)">Why a URI flag, not a convention</h4>
+          <p style="font-size:13.5px;line-height:1.55">Phase 2 opens Phase 1's database as
+          <code>mode=ro</code>. A stray write <b>raises</b> instead of silently corrupting.</p>
+          <p style="font-size:13.5px;line-height:1.55;margin-top:10px">In a system whose entire value is
+          provenance, a bug in the reasoning layer must not be able to alter the evidence it reasons over.
+          A team convention holds until someone is in a hurry at 2 a.m.</p>
+        </div>
+        <div class="box">
+          <h4>Retrieval is four stages, not one</h4>
+          <p style="font-size:13.5px;line-height:1.55">BM25 catches exact identifiers — <code>NCT06550882</code>,
+          a sponsor's legal name — that embeddings blur. Vectors catch paraphrase BM25 misses.
+          Fusion uses <b>ranks only</b>, so two incomparable scales need no tuning.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>Architecture</span><span class="num">06</span></div>
+</section>
+
+<!-- 7 ─────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">Reality check</div>
+  <h2 class="wide">What is actually running — including what is not</h2>
+  <div class="body">
+    <div class="cols c2" style="gap:40px">
+      <div>
+        <table>
+          <tr><th>Source</th><th class="n">Records</th><th>Status</th></tr>
+          <tr><td>ClinicalTrials.gov v2</td><td class="n">992</td><td><span class="chip built">Built</span></td></tr>
+          <tr><td>PubMed / NCBI</td><td class="n">299</td><td><span class="chip built">Built</span></td></tr>
+          <tr><td>SEC EDGAR full-text</td><td class="n">100</td><td><span class="chip built">Built</span></td></tr>
+          <tr><td>arXiv</td><td class="n">8</td><td><span class="chip built">Built</span></td></tr>
+          <tr><td>OpenFDA</td><td class="n dim">0</td><td><span class="chip partial">Partial</span> <span class="dim" style="font-size:10.5px">no matches</span></td></tr>
+          <tr><td>WHO ICTRP</td><td class="n dim">0</td><td><span class="chip partial">Partial</span> <span class="dim" style="font-size:10.5px">blocks automation</span></td></tr>
+          <tr><td>medRxiv</td><td class="n dim">0</td><td><span class="chip partial">Partial</span> <span class="dim" style="font-size:10.5px">no matches</span></td></tr>
+          <tr><td>USPTO</td><td class="n dim">0</td><td><span class="chip partial">Partial</span> <span class="dim" style="font-size:10.5px">needs API key</span></td></tr>
+        </table>
+        <p class="sub" style="font-size:13px;margin-top:14px">
+          All eight connectors are implemented and tested. Four returned nothing against live endpoints.
+        </p>
+      </div>
+      <div class="stack">
+        <div class="box" style="border-color:var(--accent);background:var(--accent-soft)">
+          <h4 style="color:var(--accent)">We do not render empty categories</h4>
+          <p style="font-size:13.5px;line-height:1.55"><code>signals.py</code> hard-codes the category map to the four
+          sources that actually returned data, and the facets endpoint reports only categories genuinely present.
+          Regulatory, HTA, Congress and Safety <b>have no source behind them in this build, so they are never emitted</b>
+          — not shown as empty tabs.</p>
+        </div>
+        <table style="margin-top:4px">
+          <tr><th>Capability</th><th>Status</th></tr>
+          <tr><td>Versioned snapshots + change log</td><td><span class="chip built">Built</span></td></tr>
+          <tr><td>Hybrid retrieval + evidence ranking</td><td><span class="chip built">Built</span></td></tr>
+          <tr><td>Confidence gate / abstention</td><td><span class="chip built">Built</span></td></tr>
+          <tr><td>Urgency scoring + role routing</td><td><span class="chip built">Built</span></td></tr>
+          <tr><td>Feed / detail / assistant UI</td><td><span class="chip built">Built</span></td></tr>
+          <tr><td>Classifier verdicts</td><td><span class="chip partial">Partial</span> <span class="dim" style="font-size:10.5px">rules live, LLM staged</span></td></tr>
+          <tr><td>Calibration re-weighting</td><td><span class="chip partial">Partial</span> <span class="dim" style="font-size:10.5px">captured, not wired</span></td></tr>
+          <tr><td>Expectation Ledger + silence</td><td><span class="chip designed">Designed</span></td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="key" style="margin-top:18px;font-size:19px">
+      Every one of the 1,399 records currently sits at "first seen".
+      <span class="plain">The diff engine is correct and has not yet had a second observation to diff against — a collection gap, not a code gap.</span>
+    </div>
+  </div>
+  <div class="foot"><span>Reality check</span><span class="num">07</span></div>
+</section>
+
+<!-- 8 ─────────────────────────────────────────────────────────── -->
+<section class="slide divider">
+  <div class="eyebrow" style="color:var(--medium)">The Expectation Ledger &nbsp;·&nbsp; <span class="chip designed" style="vertical-align:1px">Designed</span><span class="dim" style="font-size:10.5px">&nbsp; schema frozen</span></div>
+  <div style="margin:auto 0">
+    <h1 style="font-size:46px">A promised readout is not news.<br>It is a dated obligation.</h1>
+    <p class="sub" style="font-size:19px;max-width:70ch;margin-top:26px">
+      Every system in this space treats <span class="mono" style="color:#fff">"primary completion estimated October 2026"</span>
+      as text to be indexed.
+    </p>
+    <p class="sub" style="font-size:19px;max-width:70ch;margin-top:14px">
+      It is not text. It is a <b style="color:#fff">row in a ledger</b> — with a due date, an owner,
+      and a quote that proves somebody said it on the record.
+    </p>
+    <div style="border-left:4px solid var(--accent-soft);padding:16px 0 16px 22px;margin-top:32px;max-width:64ch">
+      <p style="font-size:22px;line-height:1.4;font-weight:600;color:#fff">
+        Then one of two things happens — and the second one is the whole point.
+      </p>
+    </div>
+  </div>
+  <div class="foot"><span>The Expectation Ledger</span><span class="num">08</span></div>
+</section>
+
+<!-- 9 ─────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">The Expectation Ledger &nbsp;·&nbsp; <span class="chip designed" style="vertical-align:1px">Designed</span><span class="dim" style="font-size:10.5px">&nbsp; schema frozen</span></div>
+  <h2 class="wide">134 open commitments, from a field we already receive and currently throw away</h2>
+  <div class="body">
+    <div class="cols c2w">
+      <div>
+        <div class="box" style="border-color:var(--accent);background:var(--accent-soft);margin-bottom:16px">
+          <h4 style="color:var(--accent)">Live count · ClinicalTrials.gov · 2026-09-07</h4>
+          <table style="margin-top:4px">
+            <tr><td>Haemophilia studies matched</td><td class="n">992</td></tr>
+            <tr><td>Carrying a primary completion date</td><td class="n">946</td></tr>
+            <tr><td><b>Dated in the future</b></td><td class="n"><b style="color:var(--accent);font-size:16px">134</b></td></tr>
+            <tr><td>Typed <span class="mono">ESTIMATED</span>, not <span class="mono">ACTUAL</span></td>
+                <td class="n"><b style="color:var(--accent)">134</b></td></tr>
+          </table>
+          <p style="font-size:13px;line-height:1.5;margin-top:12px">
+            Every single one is an <b>estimate</b> — a promise, not a fact. Among them:
+            <span class="mono" style="font-size:11.5px">NCT07653139</span> (Novo Nordisk, 26 Oct),
+            <span class="mono" style="font-size:11.5px">NCT06738485</span> (CSL Behring, 26 Oct),
+            <span class="mono" style="font-size:11.5px">NCT06550882</span> (Takeda, 30 Sep).
+          </p>
+        </div>
+        <div class="box">
+          <h4>The system already half-recognises this</h4>
+          <pre style="font-size:10.5px;margin-top:2px"># evidence.py:100 — trials held recency-neutral because
+# ClinicalTrials.gov stores a date the study has not reached
+if date_class not in ("publication", "filing"):
+    return 1.00</pre>
+          <p style="font-size:13px;line-height:1.55;margin-top:10px">
+            That guard <b>is the detector</b>. It identifies exactly the records carrying a future date —
+            and then discards the information. The Ledger is what that branch should feed.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="box">
+          <h4>Schema</h4>
+          <pre style="font-size:10px">CREATE TABLE expectation (
+  entity, asset, event_type,     -- who promised what
+  window_start, window_end,      -- widened from `precision`
+  precision,                     -- day|month|quarter|half|year
+  quote_span    NOT NULL,        -- no span, no row
+  source_url    NOT NULL,
+  status,       -- OPEN | WATCHING | MET
+                -- | MISSED | RETRACTED | SUPERSEDED
+  next_check_at,                 -- drives the scheduler
+  resolved_item_id, resolved_at
+);</pre>
+        </div>
+        <div class="box">
+          <h4>Watch cadence — one row, four phases</h4>
+          <table style="margin-top:2px">
+            <tr><th>Phase</th><th>When</th><th>Cadence</th></tr>
+            <tr><td>Dormant</td><td class="mono dim" style="font-size:11.5px">&lt; T−14d</td><td>weekly</td></tr>
+            <tr><td>Approach</td><td class="mono dim" style="font-size:11.5px">T−14d → T</td><td><b>daily</b>, targeted</td></tr>
+            <tr><td>Burst</td><td class="mono dim" style="font-size:11.5px">T → T+grace</td><td><b>every 6 h</b></td></tr>
+            <tr><td style="color:var(--accent)"><b>Resolve</b></td><td class="mono dim" style="font-size:11.5px">&gt; T+grace</td>
+                <td style="color:var(--accent)"><b>silence signal</b></td></tr>
+          </table>
+          <p style="font-size:12.5px;line-height:1.5;margin-top:10px" class="muted">
+            Reuses <code>scheduling_metadata.next_scheduled_run</code> — a column declared,
+            documented, migrated, and <b>NULL for all 8 ingestors</b> because nothing ever wrote it.</p>
+        </div>
+      </div>
+    </div>
+    <div class="key" style="margin-top:16px;font-size:19px">
+      The 134 registry commitments need no language model at all —
+      <span class="plain">date, sponsor, trial and event type are structured fields. Sprint one is field-mapping.</span>
+    </div>
+  </div>
+  <div class="foot"><span>The Expectation Ledger · mechanism</span><span class="num">09</span></div>
+</section>
+
+<!-- 10 ────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">Silence signals &nbsp;·&nbsp; <span class="chip designed" style="vertical-align:1px">Designed</span></div>
+  <h2 class="wide">We do not claim nothing happened. We prove we looked.</h2>
+  <div class="body">
+    <div class="cols c2w">
+      <div>
+        <div class="card silence">
+          <div class="hdr"><span class="tag acc">Silence</span><span class="tag high">High</span>
+            <span class="tag reg">Clinical Development</span>
+            <span class="dim mono" style="margin-left:auto;font-size:10.5px">EXP-0088</span></div>
+          <div class="fld"><div class="k">What changed</div><div class="v">
+            Expected <span class="mono">readout</span> for <span class="mono">NCT06550882</span> (Takeda)
+            <b>did not arrive</b>.<br>
+            <span class="dim mono" style="font-size:12px">promised window 2026-09-30 · grace 30 d · elapsed 41 d</span></div></div>
+          <div class="fld"><div class="k">Why it matters</div><div class="v">
+            A slipped primary completion in a competing extended-half-life programme moves the
+            comparative-data timeline in a reference market.</div></div>
+          <div class="fld"><div class="k">Action</div><div class="v mono" style="font-size:12.5px">
+            HTA_WATCH_ITEM · owner Clinical Development · SLA 14 d</div></div>
+          <div class="fld"><div class="k">Evidence</div><div class="v" style="font-size:12.5px;line-height:1.55">
+            Original commitment: <i>"Estimated primary completion date: 2026-09-30"</i>
+            <span class="dim">(ClinicalTrials.gov, retrieved 2026-09-01)</span><br>
+            <b style="color:var(--accent)">63 probes across 4 sources between 2026-09-16 and 2026-11-10 — 0 matches.</b>
+            <span class="dim">[probe log]</span></div></div>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="box" style="border-color:var(--accent);background:var(--accent-soft)">
+          <h4 style="color:var(--accent)">Absence is what a model will confabulate</h4>
+          <p style="font-size:14px;line-height:1.6">So the Ledger never asks one.
+          Every scheduled probe is written to <code>watch_probe</code> whether it matches or not.
+          <b>The log is the evidence.</b></p>
+          <p style="font-size:14px;line-height:1.6;margin-top:12px">The claim is not
+          <i>"we believe nothing happened"</i>. The claim is
+          <b>"we ran 63 searches on these dates against these sources and found nothing"</b> — and a
+          reviewer can open it.</p>
+        </div>
+        <div class="box">
+          <h4>Why this is unusually defensible</h4>
+          <ul style="margin-top:2px">
+            <li>A reviewer can only disagree by <b>naming a source the probe did not cover</b> — which is a
+            productive argument, and exactly what the calibration loop absorbs</li>
+            <li>A completion date that slips twice is itself a signal. Supersession keeps the history
+            rather than overwriting it</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="key" style="margin-top:18px;font-size:23px">
+      No article is ever written about a readout that did not happen.
+    </div>
+  </div>
+  <div class="foot"><span>Silence signals</span><span class="num">10</span></div>
+</section>
+
+<!-- 11 ────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">Honesty engineering &nbsp;·&nbsp; <span class="chip built" style="vertical-align:1px">Built</span></div>
+  <h2 class="wide">The refusal is a feature, and it is enforced in code rather than asked for in a prompt</h2>
+  <div class="body">
+    <div class="cols c3">
+      <div class="box">
+        <h4>1 · The gate runs before generation</h4>
+        <p style="font-size:13.5px;line-height:1.55">With no evidence, evidence below <code>MIN_EVIDENCE</code>,
+        or nothing but stubs, <b>no model is called at all</b>. A templated reply names what was missing.</p>
+        <p style="font-size:13.5px;line-height:1.55;margin-top:10px">A model asked to judge its own confidence
+        is its own auditor, and it fails in one direction: it <b>under-refuses</b>, exactly when the corpus is
+        thinnest.</p>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <table>
+            <tr><td class="mono" style="font-size:11.5px;color:var(--accent)">supported</td>
+                <td style="font-size:12px">every claim traces to an excerpt or exact count</td></tr>
+            <tr><td class="mono" style="font-size:11.5px;color:var(--medium)">inferred</td>
+                <td style="font-size:12px">synthesised; no single excerpt says it</td></tr>
+            <tr><td class="mono" style="font-size:11.5px;color:var(--high)">insufficient</td>
+                <td style="font-size:12px">the corpus cannot support an answer</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="box">
+        <h4>2 · Numbers never come from the model</h4>
+        <p style="font-size:13.5px;line-height:1.55">Top-k retrieval sees eight documents and
+        <b>physically cannot</b> answer "how many trials are recruiting".</p>
+        <p style="font-size:13.5px;line-height:1.55;margin-top:10px">So the model <b>names a whitelisted query</b>
+        from a fixed registry and supplies arguments. It never writes SQL and never sees a connection.</p>
+        <p style="font-size:13.5px;line-height:1.55;margin-top:10px">A generated query can be
+        <i>plausible and wrong</i> — a missing <code>DISTINCT</code>, a silently dropped NULL — returning a
+        confident number nobody can audit. In a regulated setting <b>a wrong number is worse than a refusal</b>.</p>
+      </div>
+      <div class="box">
+        <h4>3 · Self-report can only lower</h4>
+        <p style="font-size:13.5px;line-height:1.55">After generation, a <code>supported</code> claim with no
+        citations — or citing records that were never retrieved — is <b>demoted</b>.</p>
+        <p style="font-size:13.5px;line-height:1.55;margin-top:10px">The asymmetry closes the last hole: a model
+        may admit it is synthesising, and that is honoured. The reverse claim is not.</p>
+        <p style="font-size:13.5px;line-height:1.55;margin-top:10px">The <code>reason</code> string on every piece of
+        evidence — <i>"matched on both keyword (#3) and meaning (#1, similarity 0.87)"</i> — is assembled
+        <b>deterministically from the scoring fields</b>. No model writes it, so it cannot be fabricated.</p>
+      </div>
+    </div>
+    <div class="key" style="margin-top:22px">
+      Three of the fifteen golden questions must be <span style="text-decoration:underline">refused</span>.
+      <span class="plain">Abstention recall gates the suite's exit code — answering one of them fails the run even if every other answer is right.</span>
+    </div>
+  </div>
+  <div class="foot"><span>Honesty engineering</span><span class="num">11</span></div>
+</section>
+
+<!-- 12 ────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">Calibration &nbsp;·&nbsp; <span class="chip partial" style="vertical-align:1px">Partial</span><span class="dim" style="font-size:10.5px">&nbsp; re-weighting not wired</span></div>
+  <h2 class="wide">A reviewer's correction changes the scoring, not just the record</h2>
+  <div class="body">
+    <div class="cols c2" style="gap:32px">
+      <div class="vs bad">
+        <h4>Baseline · before feedback</h4>
+        <div class="fld"><div class="k">Event</div><div class="v" style="font-size:13.5px">
+          Competitor gene-therapy programme completes Phase 3 enrolment
+          <span class="dim">(public registry update)</span></div></div>
+        <div class="fld"><div class="k">Urgency</div><div class="v"><span class="tag high">High</span></div></div>
+        <div class="fld"><div class="k">Route</div><div class="v">Clinical Development</div></div>
+        <div class="fld"><div class="k">Action</div><div class="v mono" style="font-size:12.5px">
+          Prepare competitive-response assessment · SLA 7 d</div></div>
+        <div class="fld" style="margin-top:auto;padding-top:14px"><div class="k">Feature weights</div>
+          <div class="v mono dim" style="font-size:12px;line-height:1.7">
+          enrolment milestone &nbsp;0.40<br>readout proximity &nbsp;&nbsp;&nbsp;0.10<br>
+          HTA-relevant geography 0.15<br>indication overlap &nbsp;&nbsp;0.35<br><span class="dim">sum &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1.00</span></div></div>
+      </div>
+      <div class="vs good">
+        <h4>After two reviewer corrections</h4>
+        <div class="fld"><div class="k">Event</div><div class="v" style="font-size:13.5px">
+          Same event, re-scored</div></div>
+        <div class="fld"><div class="k">Urgency</div><div class="v"><span class="tag" style="background:var(--medium-soft);color:var(--medium)">Medium</span></div></div>
+        <div class="fld"><div class="k">Route</div><div class="v">Market Access &amp; HEOR <span class="dim">(primary)</span> · Clinical Development <span class="dim">(informed)</span></div></div>
+        <div class="fld"><div class="k">Action</div><div class="v mono" style="font-size:12.5px">
+          HTA_WATCH_ITEM — expected readout registered<br>as a silence watch · SLA 14 d</div></div>
+        <div class="fld" style="margin-top:auto;padding-top:14px"><div class="k">Feature weights</div>
+          <div class="v mono" style="font-size:12px;line-height:1.7">
+          enrolment milestone &nbsp;0.15 <span style="color:var(--low)">↓ .25</span><br>
+          readout proximity &nbsp;&nbsp;&nbsp;0.35 <span style="color:var(--accent)">↑ .25</span><br>
+          HTA-relevant geography 0.25 <span style="color:var(--accent)">↑ .10</span><br>
+          indication overlap &nbsp;&nbsp;0.25 <span style="color:var(--low)">↓ .10</span><br>
+          <span class="dim">sum &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1.00</span></div></div>
+      </div>
+    </div>
+    <div class="box" style="margin-top:14px;background:var(--medium-soft);border-color:var(--medium)">
+      <p style="font-size:12.5px;line-height:1.5">
+        <b>Reviewer:</b> <i>"Enrolment completion is already known and is not the decision point — the readout date
+        is. The near-term implication for us is access, not trial design."</i>
+        &nbsp;<b>System:</b> the same four features re-weighted for this function — enrolment milestone &minus;0.25,
+        readout proximity +0.25, HTA geography +0.10, indication overlap &minus;0.10. Nothing added or removed and
+        <b>the weights still sum to 1.00</b>: a redistribution, not a new model.</p>
+    </div>
+    <div class="key" style="margin-top:16px;font-size:19px">
+      Feedback is structured — <span class="mono" style="font-size:16px">already known · wrong indication · too early-stage · not our function</span>
+      <span class="plain">— because free text cannot move a weight.</span>
+    </div>
+  </div>
+  <div class="foot"><span>Stakeholder calibration</span><span class="num">12</span></div>
+</section>
+
+<!-- 13 ────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">Routing &nbsp;·&nbsp; <span class="chip built" style="vertical-align:1px">Built</span></div>
+  <h2 class="wide">Five functions, five queues, five different definitions of urgent</h2>
+  <div class="body">
+    <div class="cols c2w" style="gap:36px">
+      <div>
+        <table>
+          <tr><th>Function</th><th>Sees</th><th>Typical action</th></tr>
+          <tr><td><b>Medical Affairs</b></td><td>evidence, congress, publications</td><td class="mono" style="font-size:11px">EVIDENCE_REVIEW</td></tr>
+          <tr><td><b>Regulatory</b></td><td>filings, opinions, label changes</td><td class="mono" style="font-size:11px">LABEL_IMPACT_ASSESSMENT</td></tr>
+          <tr><td><b>Market Access &amp; HEOR</b></td><td>HTA, pricing, reimbursement</td><td class="mono" style="font-size:11px">HTA_WATCH_ITEM</td></tr>
+          <tr><td><b>Clinical Development</b></td><td>trial design, endpoints, enrolment</td><td class="mono" style="font-size:11px">TRIAL_DELTA_REVIEW</td></tr>
+          <tr><td><b>Commercial / Brand</b></td><td>competitor pipeline, corporate</td><td class="mono" style="font-size:11px">POSITIONING_NOTE</td></tr>
+          <tr><td><b>Safety / PV</b></td><td class="dim">read-only visibility only</td><td class="dim" style="font-size:12px">no case processing</td></tr>
+        </table>
+        <p class="sub" style="font-size:13px;margin-top:14px">
+          Safety is deliberately <b>not</b> a routed queue. Anything touching adverse events is flagged for
+          mandatory human review before it is shown as actionable, and the system never communicates externally.
+        </p>
+      </div>
+      <div class="stack">
+        <div class="box">
+          <h4>Urgency is composed, not guessed</h4>
+          <table style="margin-top:2px">
+            <tr><th>Factor</th><th class="n">Weight</th></tr>
+            <tr><td>Trial changed status</td><td class="n">×1.50</td></tr>
+            <tr><td>Tracked field moved</td><td class="n">×1.25</td></tr>
+            <tr><td>Record first seen</td><td class="n">×1.00</td></tr>
+            <tr><td>Completeness</td><td class="n">0.60 – 1.00</td></tr>
+            <tr><td>Recency <span class="dim">(publication/filing only)</span></td><td class="n">0.90 – 1.10</td></tr>
+            <tr><td>Classifier verdict</td><td class="n">1.00 – 1.10</td></tr>
+          </table>
+        </div>
+        <div class="box" style="border-color:var(--accent)">
+          <h4 style="color:var(--accent)">Thresholds calibrated, not picked</h4>
+          <p style="font-size:13.5px;line-height:1.55">With completeness capped at 1.00 and recency at 1.10, a
+          never-changed record tops out at <b>1.07</b>. So <code>HIGH_THRESHOLD = 1.02</code> — any higher and the
+          High band would be <b>unreachable until a second ingestion run</b>.</p>
+          <p style="font-size:13.5px;line-height:1.55;margin-top:10px">An empty tier is not a useful one. The same
+          completeness and recency functions drive evidence ranking, so a record cannot be urgent here and
+          unimportant there.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>Role-based routing</span><span class="num">13</span></div>
+</section>
+
+<!-- 14 ────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">Evaluation &nbsp;·&nbsp; <span class="chip built" style="vertical-align:1px">Built</span></div>
+  <h2 class="wide">We measured it, including the questions it is supposed to fail</h2>
+  <div class="body">
+    <div class="cols c2w" style="gap:36px">
+      <div>
+        <table>
+          <tr><th>Category</th><th class="n">Q</th><th>What it proves</th></tr>
+          <tr><td>factual_count</td><td class="n">4</td><td>counts come from aggregates, not generation</td></tr>
+          <tr><td>semantic_search</td><td class="n">2</td><td>paraphrase retrieval works without keywords</td></tr>
+          <tr><td>source_specific</td><td class="n">1</td><td>source filters are honoured</td></tr>
+          <tr><td style="color:var(--accent)"><b>insufficient_evidence</b></td><td class="n"><b style="color:var(--accent)">3</b></td>
+              <td><b>the system refuses rather than guesses</b></td></tr>
+          <tr><td>cross_document</td><td class="n">2</td><td>synthesis is labelled <code>inferred</code>, not <code>supported</code></td></tr>
+          <tr><td>citation_correctness</td><td class="n">1</td><td>every citation resolves to a retrieved record</td></tr>
+          <tr><td>item_scope</td><td class="n">2</td><td>item chat cannot reach outside its record</td></tr>
+        </table>
+        <div class="box" style="margin-top:18px">
+          <h4>Assertion vocabulary</h4>
+          <p class="mono" style="font-size:11.5px;line-height:1.8">expect_route · expect_numbers · expect_contains<br>
+          expect_absent · expect_confidence · must_retrieve_any_of<br>
+          assert_citations_valid · scope</p>
+          <p style="font-size:12.5px;line-height:1.5;margin-top:10px" class="muted">
+            Assertions are declarative in <code>eval/golden.yaml</code>, so adding a regression case is a YAML
+            entry, not code.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="slot" style="min-height:150px">RESULTS TABLE<br><span style="font-size:11px">per-category pass rate + abstention recall<br>from <code>scripts/run_eval.py</code></span></div>
+        <div class="box" style="border-color:var(--accent);background:var(--accent-soft)">
+          <h4 style="color:var(--accent)">Abstention recall gates the exit code</h4>
+          <p style="font-size:13.5px;line-height:1.55">It is reported <b>separately</b> from accuracy, and a recall
+          below 1.0 fails the run. A system that answers a question it cannot support has failed, regardless of how
+          many other answers were right.</p>
+        </div>
+        <div class="box">
+          <h4>What we deliberately do not claim to have measured</h4>
+          <ul style="margin-top:2px">
+            <li style="font-size:13.5px">Extraction precision/recall, dedup cluster purity, diff correctness —
+            the single-backfill corpus produces no diffs and no duplicate clusters to score</li>
+            <li style="font-size:13.5px">Precision@10 before vs after calibration — feedback is captured, the
+            re-weighting loop is not yet wired</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="key" style="margin-top:14px;font-size:19px">
+      Expected values are corpus-specific constants.
+      <span class="plain">Re-ingesting breaks the suite loudly rather than letting it silently pass — which is the point.</span>
+    </div>
+  </div>
+  <div class="foot"><span>Evaluation</span><span class="num">14</span></div>
+</section>
+
+<!-- 16 ────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">Business impact &nbsp;·&nbsp; <span class="chip partial" style="vertical-align:1px">Partial</span><span class="dim" style="font-size:10.5px">&nbsp; illustrative model</span></div>
+  <h2 class="wide">What earlier recognition is worth, with the arithmetic shown</h2>
+  <div class="body">
+    <div class="cols c2w" style="gap:36px">
+      <div class="stack">
+        <div class="box" style="border-color:var(--accent);background:var(--accent-soft)">
+          <h4 style="color:var(--accent)">The decisions that change</h4>
+          <ul style="margin-top:2px">
+            <li style="font-size:14px"><b>An HTA rejection in a reference market</b>, recognised ten days earlier,
+            gives Market Access a response window <i>before</i> follow-on national assessments anchor to it</li>
+            <li style="font-size:14px"><b>A competitor readout that slips</b> is a planning input available nowhere
+            else — today nobody notices it at all, because no document is published when a date is missed</li>
+            <li style="font-size:14px"><b>A label change caught at filing</b> rather than at approval moves the
+            comparative-evidence conversation upstream of the launch plan</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h4>Why we are not quoting a currency figure</h4>
+          <p style="font-size:13.5px;line-height:1.55">Converting these into money needs internal cost and
+          portfolio-value inputs we do not have and would have to invent. We would rather show a model you can
+          argue with than a number you cannot check.</p>
+        </div>
+      </div>
+      <div class="box">
+        <h4>Time saved — the weaker half of the case</h4>
+        <table style="margin-top:2px">
+          <tr><th>Assumption</th><th class="n">Value</th></tr>
+          <tr><td>Competitor programmes tracked</td><td class="n">40</td></tr>
+          <tr><td>Functions consuming intelligence</td><td class="n">5</td></tr>
+          <tr><td>Manual scanning, per function</td><td class="n">6 h/wk</td></tr>
+          <tr><td>Residual review of assembled cards</td><td class="n">8 h/wk</td></tr>
+          <tr><td>Lag today → with monitoring</td><td class="n">11 d → 1 d</td></tr>
+        </table>
+        <table style="margin-top:14px">
+          <tr><td>Scanning load today <span class="dim mono" style="font-size:11px">5 × 6</span></td><td class="n">30 h/wk</td></tr>
+          <tr><td><b>Time redirected</b></td><td class="n"><b style="color:var(--accent)">22 h/wk ≈ 0.55 FTE</b></td></tr>
+          <tr><td><b>Recognition lag reduced</b></td><td class="n"><b style="color:var(--accent)">~10 days</b></td></tr>
+        </table>
+        <p style="font-size:12px;line-height:1.5;margin-top:10px" class="muted">
+          Sensitivity — half the assumed load: 0.27 FTE. Double: 1.1 FTE. <b>The lag figure is insensitive to all
+          of them</b>, which is why it, not the FTE count, is the number we stand behind.</p>
+      </div>
+    </div>
+    <div class="key" style="margin-top:16px;font-size:19px">
+      Assumptions are ours, not Novo Nordisk's.
+      <span class="plain">Argue with the inputs — the arithmetic is on the slide.</span>
+    </div>
+  </div>
+  <div class="foot"><span>Business impact</span><span class="num">16</span></div>
+</section>
+
+<!-- 17 ────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">Feasibility</div>
+  <h2 class="wide">Cheap to run, public by construction, and the next sprint is already specified</h2>
+  <div class="body">
+    <div class="cols c3">
+      <div class="box">
+        <h4>Operating profile</h4>
+        <table style="margin-top:2px">
+          <tr><td>Embeddings</td><td class="n">local, £0</td></tr>
+          <tr><td>Model weights on disk</td><td class="n">90 MB</td></tr>
+          <tr><td>Corpus</td><td class="n">4.4 MB</td></tr>
+          <tr><td>GPU required</td><td class="n">none</td></tr>
+          <tr><td>Data sources</td><td class="n">public only</td></tr>
+          <tr><td>Internal data required</td><td class="n">none</td></tr>
+        </table>
+        <p style="font-size:13px;line-height:1.55;margin-top:12px">Inference is the only recurring cost, and only
+        for summaries and chat. Retrieval, scoring, routing, diffing and the entire Expectation Ledger run with
+        <b>no model calls at all</b>.</p>
+      </div>
+      <div class="box">
+        <h4>Deployment posture</h4>
+        <ul style="margin-top:2px">
+          <li style="font-size:13.5px">SQLite ships in the repo — a reviewer clones and runs; no server to provision</li>
+          <li style="font-size:13.5px">Schema is portable; Postgres + pgvector is the documented migration when
+          corpus size demands it <span class="dim">(ADR 001)</span></li>
+          <li style="font-size:13.5px">The model is a config value behind one interface — swapping providers is a
+          re-baseline of the eval suite, not a rewrite</li>
+          <li style="font-size:13.5px">No login, no telemetry, no third-party analytics</li>
+        </ul>
+      </div>
+      <div class="box" style="border-color:var(--accent)">
+        <h4 style="color:var(--accent)">Next 90 days</h4>
+        <table style="margin-top:2px">
+          <tr><td><b>Sprint 1</b></td><td style="font-size:13px"><b>Expectation Ledger</b> — registry path only.
+            Keep <code>primaryCompletionDateStruct</code>, migration <code>003</code>, date triggers, probe log.
+            <span class="dim">No LLM needed.</span></td></tr>
+          <tr><td><b>Sprint 2</b></td><td style="font-size:13px">Re-run ingestion on schedule → first real diffs;
+            re-baseline the eval constants</td></tr>
+          <tr><td><b>Sprint 3</b></td><td style="font-size:13px">Wire the calibration loop; measure precision@10
+            before vs after</td></tr>
+          <tr><td><b>Sprint 4</b></td><td style="font-size:13px">Enrichment for <code>retracted</code> /
+            <code>citation_count</code>; extend the Ledger to prose sources</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="key" style="margin-top:22px">
+      The differentiating capability is the <span style="text-decoration:underline">cheapest</span> thing left to build.
+      <span class="plain">Sprint 1 is field-mapping and a scheduler trigger — roughly 330 lines, and no model call.</span>
+    </div>
+  </div>
+  <div class="foot"><span>Feasibility</span><span class="num">17</span></div>
+</section>
+
+<!-- 18 ────────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="eyebrow">Closing</div>
+  <h2 class="wide">What we need from you — and what we are not claiming</h2>
+  <div class="body">
+    <div class="cols c2w" style="gap:36px">
+      <div class="box" style="border-color:var(--accent);background:var(--accent-soft)">
+        <h4 style="color:var(--accent)">What we would need from Novo Nordisk</h4>
+        <ul style="margin-top:2px">
+          <li style="font-size:14px">One or two stakeholders per function for <b>two short calibration sessions</b>
+          — the feedback loop is only demonstrable against real reviewer judgement</li>
+          <li style="font-size:14px">Confirmation of <b>which functions are routing targets</b>, and whether
+          Safety/PV is a routed queue or read-only visibility</li>
+          <li style="font-size:14px"><b>Urgency definitions and SLA expectations per function</b>, so scoring is
+          anchored to real practice rather than assumed</li>
+          <li style="font-size:14px"><b>Priority geographies</b> for HTA and regulatory weighting</li>
+          <li style="font-size:14px">Sources to <b>add to, or exclude from</b>, the allowlist</li>
+          <li style="font-size:14px">Guidance on phrasing competitive impact, given the prototype references Novo
+          Nordisk assets only from public information</li>
+        </ul>
+      </div>
+      <div class="stack">
+        <div class="box">
+          <h4>The three things we are not claiming</h4>
+          <ul style="margin-top:2px">
+            <li style="font-size:13.5px">The <b>Expectation Ledger has never run</b>. The 134 is a live query
+            against ClinicalTrials.gov, not our output</li>
+            <li style="font-size:13.5px">No <b>real diff</b> has occurred yet — the corpus is a single backfill</li>
+            <li style="font-size:13.5px">The <b>calibration improvement is unmeasured</b>; feedback is captured,
+            the re-weighting loop is not wired</li>
+          </ul>
+          <p style="font-size:12.5px;line-height:1.5;margin-top:10px" class="muted">
+            The full list is in <span class="mono" style="font-size:11.5px">LIMITATIONS.md</span> and the risk
+            register in the appendix. Nothing in this deck is claimed without a status chip.</p>
+        </div>
+        <div class="box" style="border-color:var(--accent)">
+          <h4 style="color:var(--accent)">Where we would start</h4>
+          <p style="font-size:14px;line-height:1.6">Sprint one is the Expectation Ledger on the registry path:
+          keep one field the API already returns, add one migration, swap an interval trigger for a date trigger.
+          <b>~330 lines, no language model, and the 134 rows are already there.</b></p>
+        </div>
+      </div>
+    </div>
+    <div class="key" style="margin-top:20px;font-size:21px">
+      A system that tells you what it does not know is the only kind you can act on.
+    </div>
+  </div>
+  <div class="foot"><span>Catalyst · Manipal Institute of Technology, Bengaluru</span><span class="num">18</span></div>
+</section>
+
+<!-- A ─────────────────────────────────────────────────────────── -->
+<section class="slide divider appendix">
+  <div style="margin:auto 0">
+    <div class="rule" style="background:var(--accent-soft)"></div>
+    <h1 style="font-size:44px">Appendix</h1>
+    <p class="sub" style="font-size:17px;margin-top:20px;max-width:60ch">
+      Source allowlist and counts · schemas · endpoint inventory · scoring weights ·
+      decision records · risk register.
+    </p>
+  </div>
+  <div class="foot"><span>Appendix</span><span class="num">A</span></div>
+</section>
+
+<!-- A1 ────────────────────────────────────────────────────────── -->
+<section class="slide" data-appendix="A1">
+  <div class="eyebrow">Appendix 1</div>
+  <h2 class="wide">Source allowlist, access terms, and what each returned</h2>
+  <div class="body">
+    <table>
+      <tr><th>Source</th><th>Endpoint</th><th class="n">Records</th><th>Auth</th><th>Terms</th></tr>
+      <tr><td>ClinicalTrials.gov v2</td><td class="mono" style="font-size:11px">/api/v2/studies</td><td class="n">992</td><td>none</td><td>US Gov, public domain</td></tr>
+      <tr><td>PubMed / NCBI</td><td class="mono" style="font-size:11px">esearch + efetch</td><td class="n">299</td><td>none</td><td>NCBI usage policy</td></tr>
+      <tr><td>SEC EDGAR</td><td class="mono" style="font-size:11px">efts.sec.gov/LATEST</td><td class="n">100</td><td>none</td><td>Fair access; identifying UA sent</td></tr>
+      <tr><td>arXiv</td><td class="mono" style="font-size:11px">export.arxiv.org/api</td><td class="n">8</td><td>none</td><td>arXiv API terms, metadata only</td></tr>
+      <tr><td>OpenFDA</td><td class="mono" style="font-size:11px">api.fda.gov/drug/*</td><td class="n dim">0</td><td>none</td><td>US Gov, public domain</td></tr>
+      <tr><td>WHO ICTRP</td><td class="mono" style="font-size:11px">trialsearch.who.int</td><td class="n dim">0</td><td>none</td><td>Blocks automated access</td></tr>
+      <tr><td>medRxiv</td><td class="mono" style="font-size:11px">api.biorxiv.org</td><td class="n dim">0</td><td>none</td><td>Metadata only</td></tr>
+      <tr><td>USPTO</td><td class="mono" style="font-size:11px">developer.uspto.gov</td><td class="n dim">0</td><td>API key</td><td>Key not held</td></tr>
+    </table>
+    <div class="cols c2" style="margin-top:24px;gap:36px">
+      <div class="box">
+        <h4>Trial set · top sponsors</h4>
+        <table style="margin-top:2px">
+          <tr><td>Novo Nordisk A/S</td><td class="n">105</td></tr>
+          <tr><td>Bayer</td><td class="n">58</td></tr>
+          <tr><td>Baxalta / Shire</td><td class="n">54</td></tr>
+          <tr><td>Pfizer</td><td class="n">43</td></tr>
+          <tr><td>CSL Behring</td><td class="n">29</td></tr>
+        </table>
+      </div>
+      <div class="box">
+        <h4>Trial set · status distribution</h4>
+        <table style="margin-top:2px">
+          <tr><td>COMPLETED</td><td class="n">588</td><td>UNKNOWN</td><td class="n">124</td></tr>
+          <tr><td>RECRUITING</td><td class="n">90</td><td>TERMINATED</td><td class="n">71</td></tr>
+          <tr><td>ACTIVE_NOT_REC.</td><td class="n">44</td><td>NOT_YET_REC.</td><td class="n">38</td></tr>
+        </table>
+        <p style="font-size:11.5px;margin-top:8px" class="muted">Only RECRUITING and TERMINATED map to deterministic
+        verdicts today — 161 of 1,399.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>Appendix · sources</span><span class="num">A1</span></div>
+</section>
+
+<!-- A2 ────────────────────────────────────────────────────────── -->
+<section class="slide" data-appendix="A2">
+  <div class="eyebrow">Appendix 2</div>
+  <h2 class="wide">Schemas and API surface</h2>
+  <div class="body">
+    <div class="cols c2" style="gap:36px">
+      <div>
+        <div class="box">
+          <h4>Phase 1 · haemophilia_data.db</h4>
+          <pre style="font-size:10.5px">raw_items            id · source_name · source_id
+                     source_url · title · raw_content
+                     date_published · date_ingested
+                     metadata (JSON) · is_active
+ingestor_logs        run history, per connector
+scheduling_metadata  cursor · last_run
+                     next_scheduled_run  ← never written
+classifications      raw_item_id · category · justification
+                     method · status · reason · classified_at</pre>
+        </div>
+        <div class="box" style="margin-top:16px">
+          <h4>Phase 2 · phase2.db <span class="dim">(sidecar, all writes)</span></h4>
+          <pre style="font-size:10.5px">item · chunk · chunk_fts · embedding
+item_snapshot · item_change · item_review
+chat_thread · chat_message
+landscape · summary_cache</pre>
+        </div>
+      </div>
+      <div>
+        <div class="box">
+          <h4>API · 18 endpoints</h4>
+          <table style="margin-top:2px">
+            <tr><td>Health</td><td class="mono" style="font-size:11px">/api/health</td></tr>
+            <tr><td>Feed</td><td class="mono" style="font-size:11px">/api/feed · /api/facets<br>/api/landscape · /api/landscape/refresh</td></tr>
+            <tr><td>Items</td><td class="mono" style="font-size:11px">/api/items/{id}<br>/api/items/{id}/summary<br>/api/items/{id}/similar</td></tr>
+            <tr><td>Signals</td><td class="mono" style="font-size:11px">/api/signals · /api/signals/{id}<br>/api/signals/{id}/review</td></tr>
+            <tr><td>Chat</td><td class="mono" style="font-size:11px">/api/chat/item/{id}<br>/api/chat/global · /api/threads/{id}</td></tr>
+            <tr><td>Papers</td><td class="mono" style="font-size:11px">/api/papers · /api/papers/{id}<br>/api/categories/{cat}</td></tr>
+            <tr><td>Classification</td><td class="mono" style="font-size:11px">/api/classifications/recheck</td></tr>
+          </table>
+          <p style="font-size:12.5px;line-height:1.5;margin-top:12px" class="muted">
+            Both chat endpoints stream over SSE with a <b>withholding buffer</b>, so a reply that fails
+            post-generation validation is never partially shown and then retracted.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>Appendix · schemas</span><span class="num">A2</span></div>
+</section>
+
+<!-- A3 ────────────────────────────────────────────────────────── -->
+<section class="slide" data-appendix="A3">
+  <div class="eyebrow">Appendix 3</div>
+  <h2 class="wide">Decision records — and what each one cost us</h2>
+  <div class="body">
+    <table>
+      <tr><th>#</th><th>Decision</th><th>Rejected</th><th>Cost accepted</th></tr>
+      <tr><td class="mono">001</td><td>SQLite + FTS5</td><td>PostgreSQL + pgvector</td><td>No concurrent writers; vector search is a full scan</td></tr>
+      <tr><td class="mono">002</td><td>fastembed ONNX</td><td>sentence-transformers</td><td>Smaller model retrieves worse; 90 MB instead of 2.5 GB</td></tr>
+      <tr><td class="mono">003</td><td>Phase 1 frozen, <code>mode=ro</code></td><td>One shared schema</td><td>Derived state duplicated in a sidecar</td></tr>
+      <tr><td class="mono">004</td><td>Model names a whitelisted query</td><td>Text-to-SQL</td><td>Only anticipated aggregates are answerable</td></tr>
+      <tr><td class="mono">005</td><td>One tool round-trip, never two</td><td>Open agent loop</td><td>Multi-hop questions cannot be answered</td></tr>
+      <tr><td class="mono">006</td><td>Confidence gate before generation</td><td>Prompt-based "say I don't know"</td><td>Refuses some questions a human could answer</td></tr>
+      <tr><td class="mono">007</td><td>Reciprocal Rank Fusion</td><td>Weighted score fusion</td><td>Score magnitude discarded</td></tr>
+      <tr><td class="mono">008</td><td>Trials held recency-neutral</td><td>Uniform recency</td><td>Genuinely recent trials get no boost</td></tr>
+    </table>
+    <div class="key" style="margin-top:24px">
+      Every record names the alternative that was rejected and what it cost.
+      <span class="plain">A decision with no stated cost was not a decision.</span>
+    </div>
+  </div>
+  <div class="foot"><span>Appendix · decision records</span><span class="num">A3</span></div>
+</section>
+
+<!-- A4 ────────────────────────────────────────────────────────── -->
+<section class="slide" data-appendix="A4">
+  <div class="eyebrow">Appendix 4</div>
+  <h2 class="wide">Risk register</h2>
+  <div class="body">
+    <table style="font-size:12.5px">
+      <tr><th>Risk</th><th>Impact</th><th>Mitigation in this build</th><th>Residual</th></tr>
+      <tr><td>Source changes API or blocks automation</td><td>High</td><td>Isolated per-connector; failures logged, run continues</td><td><b>Realised</b> — WHO ICTRP</td></tr>
+      <tr><td>Rate limiting under production volume</td><td>High</td><td>Backoff, per-source intervals, <code>max_instances=1</code></td><td>Untested above backfill volume</td></tr>
+      <tr><td>Model fabricates a claim or number</td><td><b>Critical</b></td><td>Aggregates never generated (ADR 004); provenance-or-withhold; gate before generation</td><td>Reasoning prose between cited facts</td></tr>
+      <tr><td>Silence signal asserts a false absence</td><td>High</td><td>Every probe logged; card cites the log, not a belief</td><td>A gap in the allowlist looks like silence</td></tr>
+      <tr><td>Corpus staleness</td><td>High</td><td>Scheduler built, cursors resumable</td><td><b>Realised</b> — single backfill</td></tr>
+      <tr><td>Verdicts rest on uncollected fields</td><td>Medium</td><td>Verdict weight capped 1.00–1.10 so it cannot dominate</td><td><b>Realised</b> — one category unreachable</td></tr>
+      <tr><td>Sensitive signal actioned without review</td><td><b>Critical</b></td><td>Mandatory human review; no external communication</td><td>Policy and UI, not a hard control</td></tr>
+      <tr><td>Eval constants break on re-ingestion</td><td>Low</td><td>Suite fails loudly rather than passing silently</td><td>Re-baseline required each run</td></tr>
+    </table>
+  </div>
+  <div class="foot"><span>Appendix · risks</span><span class="num">A4</span></div>
+</section>
+</div>
+<div id="nav">1 / 18</div>
+<script>
+const slides = [...document.querySelectorAll('.slide')];
+const nav = document.getElementById('nav');
+let i = 0;
+
+function show(n){
+  i = Math.max(0, Math.min(slides.length - 1, n));
+  slides[i].scrollIntoView({behavior:'smooth', block:'center'});
+  render();
+}
+function render(){ nav.textContent = (i + 1) + ' / ' + slides.length; }
+
+addEventListener('keydown', e => {
+  if (['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)) { e.preventDefault(); show(i + 1); }
+  else if (['ArrowLeft','ArrowUp','PageUp'].includes(e.key))    { e.preventDefault(); show(i - 1); }
+  else if (e.key === 'Home') { e.preventDefault(); show(0); }
+  else if (e.key === 'End')  { e.preventDefault(); show(slides.length - 1); }
+});
+
+// keep the counter honest when the user scrolls instead of using the keys
+const io = new IntersectionObserver(entries => {
+  entries.forEach(en => { if (en.isIntersecting) { i = slides.indexOf(en.target); render(); } });
+}, {threshold: 0.55});
+slides.forEach(s => io.observe(s));
+
+render();
+
+// Footer numbers are generated, never hand-written — reordering a slide can no
+// longer leave a stale number behind.
+(function number(){
+  let n = 0;
+  slides.forEach(sl => {
+    const foot = sl.querySelector('.foot .num');
+    if (!foot) { if (!sl.classList.contains('appendix')) n++; return; }
+    const ap = sl.dataset.appendix;
+    if (ap) { foot.textContent = ap; return; }
+    if (sl.classList.contains('appendix')) return;   // the appendix cover keeps 'A'
+    n++;
+    foot.textContent = String(n).padStart(2, '0');
+  });
+})();
+
+// Slides are a fixed 1280x720 so the PDF is exact. That means content can
+// silently clip, so measure instead of hoping: anything past the frame gets
+// outlined on screen and reported in the console. Print output is unaffected.
+// Fixed 1280x720 pages mean overlong content clips silently in the PDF. Rather
+// than trust that every slide fits, measure and scale the body of any that does
+// not. Capped at 0.80 — below that the slide genuinely has too much on it and
+// should be cut, so it is reported instead of being shrunk into unreadability.
+function fit(){
+  const tight = [];
+  slides.forEach((sl, n) => {
+    const body = sl.querySelector('.body');
+    if (!body) return;
+    body.style.transform = ''; body.style.width = ''; body.style.transformOrigin = '';
+    const sr = sl.getBoundingClientRect();
+    const avail = sr.bottom - parseFloat(getComputedStyle(sl).paddingBottom) - body.getBoundingClientRect().top;
+    const need = body.scrollHeight;
+    if (need > avail + 2) {
+      const k = Math.max(0.62, avail / need);
+      body.style.transformOrigin = 'top left';
+      body.style.transform = 'scale(' + k.toFixed(4) + ')';
+      body.style.width = (100 / k).toFixed(3) + '%';
+      tight.push((n + 1) + ':' + k.toFixed(2));
+    }
+  });
+  if (tight.length) console.log('AUTO-FIT -> ' + tight.join('  '));
+  return tight;
+}
+
+function audit(){
+  const bad = [];
+  slides.forEach((sl, n) => {
+    const sr = sl.getBoundingClientRect();
+    const limit = sr.bottom - parseFloat(getComputedStyle(sl).paddingBottom);
+    let low = 0;
+    sl.querySelectorAll('*').forEach(el => {
+      // The footer is deliberately absolute inside the bottom padding, so it is
+      // not overflow. Measure only content in normal flow.
+      if (el.closest('.foot')) return;
+      const cs = getComputedStyle(el);
+      if (cs.position === 'absolute' || cs.position === 'fixed') return;
+      if (!el.getClientRects().length) return;
+      low = Math.max(low, el.getBoundingClientRect().bottom);
+    });
+    const over = Math.round(low - limit);
+    sl.classList.toggle('overflowing', over > 4);
+    if (over > 4) bad.push((n + 1) + ':+' + over);
+  });
+  console.log(bad.length ? 'OVERFLOW -> ' + bad.join('  ') : 'layout clean: all ' + slides.length + ' slides fit');
+  return bad;
+}
+function layout(){ fit(); audit(); }
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => setTimeout(layout, 60));
+else addEventListener('load', () => setTimeout(layout, 300));
+addEventListener('resize', () => setTimeout(layout, 120));
+window.audit = audit; window.fit = fit; window.layout = layout;
+</script>
+</body>
+</html>

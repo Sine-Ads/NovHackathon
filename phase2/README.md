@@ -17,7 +17,6 @@ by SQLite's `mode=ro`, not by convention.
 cd phase2
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env          # then add your HF_TOKEN
 
 python scripts/check_env.py   # do this first — proves the right DB is found
 python scripts/build_index.py # ~8 min once (embeds 1,399 records)
@@ -33,8 +32,13 @@ npm install
 npm run dev                   # http://localhost:3000
 ```
 
-Browsing and search work without an `HF_TOKEN`. Summaries and both chatbots
-need one — get a free token at <https://huggingface.co/settings/tokens>.
+Configuration lives in a **single `.env` at the repository root**; `phase2/.env`
+is a symlink to it, so Phase 2 and the `llm_1` classifier share one endpoint and
+one `LLM_API_KEY`. Any OpenAI-compatible provider works — Gemini, Groq,
+OpenRouter, or a local Ollama — by setting `LLM_BASE_URL`. See the root
+`RUNBOOK.md` for the provider table.
+
+Browsing and search work without a key. Summaries and both chatbots need one.
 
 ---
 
@@ -356,7 +360,9 @@ changes.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `HF_TOKEN` | — | required for summaries and chat |
+| `LLM_API_KEY` | — | required for summaries and chat (shared with `llm_1`) |
+| `LLM_BASE_URL` | Gemini | any OpenAI-compatible endpoint; blank = HuggingFace |
+| `LLM_MODEL` | `gemini-2.0-flash` | default for both model stages |
 | `PHASE2_LLM_MODEL` | `Qwen/Qwen2.5-72B-Instruct` | alternate: `meta-llama/Llama-3.3-70B-Instruct` |
 | `PHASE2_EMBED_MODEL` | `BAAI/bge-small-en-v1.5` | 384-dim, ONNX |
 | `PHASE2_SOURCE_DB` | auto | absolute path wins over auto-resolution |

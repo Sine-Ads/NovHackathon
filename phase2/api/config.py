@@ -31,10 +31,29 @@ EMBED_CACHE_DIR = Path(
     os.getenv("PHASE2_EMBED_CACHE") or PHASE2_DIR / "data" / "models"
 ).expanduser()
 
-LLM_MODEL = os.getenv("PHASE2_LLM_MODEL", "Qwen/Qwen2.5-72B-Instruct")
+LLM_MODEL = (
+    os.getenv("PHASE2_LLM_MODEL")
+    or os.getenv("LLM_MODEL")
+    or "Qwen/Qwen2.5-72B-Instruct"
+)
 EMBED_MODEL = os.getenv("PHASE2_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 EMBED_DIM = int(os.getenv("PHASE2_EMBED_DIM", "384"))
-HF_TOKEN = os.getenv("HF_TOKEN") or None
+# --- Inference provider -----------------------------------------------------
+# The chat layer talks to any OpenAI-compatible endpoint. Leaving LLM_BASE_URL
+# blank keeps the original behaviour (HuggingFace serverless inference); setting
+# it points the same `chat_completion` calls at Gemini, Groq, OpenRouter, or a
+# local Ollama, with no other code change.
+#
+# InferenceClient treats `base_url` as an alias for `model` and appends
+# `/chat/completions`, so the model name travels in the request payload instead.
+LLM_BASE_URL = os.getenv("LLM_BASE_URL") or None
+
+# One key for both model stages — the llm_1 classifier and this assistant.
+# HF_TOKEN remains accepted so an existing HuggingFace setup keeps working.
+LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("HF_TOKEN") or None
+
+# Backwards-compatible alias: code and error messages still refer to HF_TOKEN.
+HF_TOKEN = LLM_API_KEY
 
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
 

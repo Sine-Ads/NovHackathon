@@ -3,7 +3,9 @@ import argparse
 import os
 import sys
 
-ingestion_path = os.path.join(os.path.dirname(__file__), "data-ingestion-system")
+ingestion_path = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "data-ingestion-system")
+)
 sys.path.insert(0, ingestion_path)
 if "DATABASE_URL" not in os.environ:
     database_path = os.path.join(ingestion_path, "haemophilia_data.db")

@@ -1,6 +1,5 @@
 .venv/
 .env
-.env.example
 __pycache__/
 *.pyc
 data/*.db
@@ -10,3 +9,7 @@ web/node_modules/
 web/.next/
 web/out/
 data/models/
+
+# SQLite sidecar journals - never commit these alongside a tracked .db
+*.db-wal
+*.db-shm

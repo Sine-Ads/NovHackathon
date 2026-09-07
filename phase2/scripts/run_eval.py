@@ -4,7 +4,7 @@
 Smoke tests prove the API responds. This proves the answers are right — and,
 just as importantly, that the system declines when it should.
 
-Requires the API running on port 8000 and HF_TOKEN configured.
+Requires the API running on port 8000 and LLM_API_KEY configured.
 
 Usage:
     python scripts/run_eval.py
@@ -140,7 +140,7 @@ def main() -> int:
         print(f"API unreachable at {API}: {exc}")
         return 2
     if not health.get("llm_configured"):
-        print("HF_TOKEN is not configured — every chat case would fail. Set it in phase2/.env")
+        print("LLM_API_KEY is not configured — every chat case would fail. Set it in the root .env")
         return 2
 
     cases = yaml.safe_load(GOLDEN.read_text())["questions"]

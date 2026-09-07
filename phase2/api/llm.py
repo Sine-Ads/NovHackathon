@@ -15,7 +15,7 @@ import json
 import re
 from typing import Any, Iterator, Optional
 
-from api.config import HF_TOKEN, LLM_MODEL
+from api.config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 
 _client = None
 
@@ -27,14 +27,22 @@ class LLMUnavailable(RuntimeError):
 def get_client():
     global _client
     if _client is None:
-        if not HF_TOKEN:
+        if not LLM_API_KEY:
             raise LLMUnavailable(
-                "HF_TOKEN is not set. Add it to phase2/.env — summaries and chat "
-                "need it; browsing and search do not."
+                "No inference key configured. Set LLM_API_KEY in the shared .env "
+                "at the repository root — summaries and chat need it; browsing "
+                "and search do not."
             )
         from huggingface_hub import InferenceClient
 
-        _client = InferenceClient(token=HF_TOKEN)
+        # With base_url set, the client posts to `{base_url}/chat/completions`
+        # and the model name is carried in the payload — the OpenAI-compatible
+        # shape every provider below exposes. Without it, the original
+        # HuggingFace serverless path is used unchanged.
+        if LLM_BASE_URL:
+            _client = InferenceClient(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
+        else:
+            _client = InferenceClient(token=LLM_API_KEY)
     return _client
 
 

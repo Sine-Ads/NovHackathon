@@ -48,14 +48,22 @@ WHERE r.is_active = 1
 ORDER BY c.classified_at DESC;
 ```
 
-## API recommendation
+## API — implemented in Phase 2
 
-The repository currently has no frontend API. Add a backend endpoint that
-returns the joined query above as JSON. Useful endpoints are:
+> **Status update.** This section originally recommended building these
+> endpoints. Phase 2 now serves them; the shapes below are the contract it
+> implements, kept here as the reference for anyone consuming it.
 
-- `GET /papers` for paginated classified papers
-- `GET /papers/{raw_item_id}` for one paper and its classification
-- `GET /categories/{category}` for filtered results
+`phase2/api/main.py` exposes:
+
+- `GET /api/papers` — paginated classified papers
+- `GET /api/papers/{raw_item_id}` — one paper and its classification
+- `GET /api/categories/{category}` — filtered results
+
+Phase 2 reads `classifications` **live** rather than indexing it
+(`phase2/api/classifications.py`), so re-running the classifier is reflected
+immediately with no index rebuild. If the table is absent, verdict-dependent
+features degrade to "no verdict" rather than failing.
 
 Recommended JSON shape:
 
