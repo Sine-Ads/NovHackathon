@@ -7,6 +7,7 @@ metadata instead, marked ``abstain`` — which is also faster and free.
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
 from typing import Any, Optional
 
@@ -15,6 +16,8 @@ from api.config import LLM_MODEL, THIN_CONTENT_CHARS
 from api.evidence import DATE_LABELS
 from api.prompts import BUSINESS_FUNCTIONS, summary_messages
 from api.source_db import SourceItem
+
+logger = logging.getLogger(__name__)
 
 # Which teams care about which source, when we cannot ask the model.
 DEFAULT_FUNCTIONS = {
@@ -153,6 +156,9 @@ def summarize(
         parsed = llm.complete_json(messages, max_tokens=600)
     except llm.LLMUnavailable as exc:
         # Never cache a failure — a later retry should be able to succeed.
+        # The cause is an operator concern (missing token, rate limit, network),
+        # so it goes to the server log; the response carries only a flag.
+        logger.warning("Summary unavailable for %s: %s", item.item_id, exc)
         return {
             "summary": None,
             "why_matters": None,
@@ -160,7 +166,7 @@ def summarize(
             "functions": DEFAULT_FUNCTIONS.get(item.source_name, []),
             "confidence": "abstain",
             "cached": False,
-            "error": str(exc),
+            "error": "unavailable",
         }
 
     if not parsed:

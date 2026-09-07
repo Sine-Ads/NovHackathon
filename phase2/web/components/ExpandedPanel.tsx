@@ -2,15 +2,33 @@
 
 import { useEffect, useState } from "react";
 import { fetchSimilar, fetchSummary } from "@/lib/api";
+import { FAILURE_COPY, userMessage } from "@/lib/errors";
 import type { Evidence, FeedItem, Summary } from "@/lib/types";
+
 import { ChatPanel } from "./ChatPanel";
 import { VerdictBadge } from "./VerdictBadge";
+
+/**
+ * Only the provenance fields are needed here, so both a feed record and a
+ * signal satisfy it — the summary, related coverage and per-record chat work
+ * from either view without duplicating the panel.
+ */
+type RecordRef = Pick<
+  FeedItem,
+  | "item_id"
+  | "source_name"
+  | "source_id"
+  | "source_url"
+  | "date_label"
+  | "date_published"
+  | "classification"
+>;
 
 export function ExpandedPanel({
   item,
   onOpenItem,
 }: {
-  item: FeedItem;
+  item: RecordRef;
   onOpenItem?: (itemId: string) => void;
 }) {
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -27,7 +45,7 @@ export function ExpandedPanel({
     // second open of the same card is instant.
     fetchSummary(item.item_id)
       .then((s) => !cancelled && setSummary(s))
-      .catch((e) => !cancelled && setError(String(e)));
+      .catch((e) => !cancelled && setError(userMessage("summary", e)));
     fetchSimilar(item.item_id, 5)
       .then((r) => !cancelled && setSimilar(r.similar))
       .catch(() => undefined);
@@ -75,12 +93,9 @@ export function ExpandedPanel({
           {abstained ? " · insufficient content" : ""}
         </h4>
         {!summary && !error && <p className="spinner">Generating summary…</p>}
-        {error && <p className="error">{error}</p>}
+        {error && <p className="muted">{error}</p>}
         {summary?.error && (
-          <p className="error">
-            Summary model unavailable: {summary.error}. The structured facts
-            below come straight from the source.
-          </p>
+          <p className="muted">{FAILURE_COPY.summary}</p>
         )}
         {summary?.summary && <p style={{ margin: 0 }}>{summary.summary}</p>}
         {summary?.why_matters && (

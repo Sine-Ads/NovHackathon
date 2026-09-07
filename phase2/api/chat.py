@@ -19,6 +19,7 @@ Three properties hold in both scopes:
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from typing import Any, Iterator, Optional
 
@@ -27,6 +28,8 @@ from api.config import MAX_HISTORY_TURNS
 from api.evidence import Evidence
 from api.landscape import to_prompt_block
 from api.router import Route, route, suggest_aggregate
+
+logger = logging.getLogger(__name__)
 
 
 def _history_messages(side: sqlite3.Connection, thread_id: str) -> list[dict[str, str]]:
@@ -78,7 +81,8 @@ def item_chat(
         (item_id,),
     ).fetchone()
     if row is None:
-        yield _emit("error", {"message": f"Unknown item {item_id}"})
+        logger.warning("Chat requested for unknown item %s", item_id)
+        yield _emit("error", {"message": "That record could not be opened."})
         return
 
     primary = retrieval._to_evidence(row)
@@ -215,10 +219,10 @@ def _stream_answer(
                 continue
             yield _emit("delta", {"text": piece})
     except llm.LLMUnavailable as exc:
+        logger.warning("LLM unavailable mid-stream: %s", exc)
         text = (
             "The language model is unavailable right now, so I can't answer. "
-            "The retrieved sources are listed below and remain usable. "
-            f"({exc})"
+            "The retrieved sources are listed below and remain usable."
         )
         yield _emit("delta", {"text": text})
         store.add_message(side, thread_id, "assistant", text, confidence.INSUFFICIENT, [])
@@ -255,7 +259,12 @@ def _stream_answer(
                     buffer.append(piece)
                     yield _emit("delta", {"text": piece})
             except llm.LLMUnavailable as exc:
-                yield _emit("delta", {"text": f"\n(Model unavailable: {exc})"})
+                logger.warning("LLM unavailable during tool follow-up: %s", exc)
+                yield _emit(
+                    "delta",
+                    {"text": "\n(The model became unavailable before it could "
+                             "use those numbers.)"},
+                )
             raw = "".join(buffer)
 
     if withholding and not handled_tool:

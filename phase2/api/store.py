@@ -10,6 +10,7 @@ documents — full SEC filing text, full-text papers — is confined to
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from datetime import datetime, timezone
@@ -95,6 +96,37 @@ CREATE TABLE IF NOT EXISTS landscape (
   value       TEXT NOT NULL,
   computed_at TEXT NOT NULL
 );
+
+-- Observation history. Phase 1 keeps one row per source record and no
+-- revisions, so "what changed" can only come from Phase 2 watching the corpus
+-- across index builds. One snapshot per (item, content hash); the tracked
+-- fields are stored alongside so a diff never has to re-read Phase 1.
+CREATE TABLE IF NOT EXISTS item_snapshot (
+  seq          INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id      TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  observed_at  TEXT NOT NULL,
+  tracked_json TEXT NOT NULL,
+  UNIQUE (item_id, content_hash)
+);
+CREATE INDEX IF NOT EXISTS ix_snapshot_item ON item_snapshot(item_id, seq);
+
+CREATE TABLE IF NOT EXISTS item_change (
+  change_id   TEXT PRIMARY KEY,
+  item_id     TEXT NOT NULL,
+  field       TEXT NOT NULL,
+  before      TEXT,
+  after       TEXT,
+  detected_at TEXT NOT NULL,
+  UNIQUE (item_id, field, detected_at)
+);
+CREATE INDEX IF NOT EXISTS ix_change_item ON item_change(item_id, detected_at);
+
+CREATE TABLE IF NOT EXISTS item_review (
+  item_id     TEXT PRIMARY KEY,
+  reviewed    INTEGER NOT NULL DEFAULT 0,
+  reviewed_at TEXT
+);
 """
 
 
@@ -113,7 +145,13 @@ def connect() -> sqlite3.Connection:
 
 
 def drop_all(conn: sqlite3.Connection) -> None:
-    """Tear the index down for a --rebuild. Never touches the Phase 1 database."""
+    """Tear the index down for a --rebuild. Never touches the Phase 1 database.
+
+    ``item_snapshot``, ``item_change`` and ``item_review`` survive deliberately:
+    they record what was observed when, and a human's review decisions. Dropping
+    them would make every record look newly seen on the next build and silently
+    rewrite the detection history.
+    """
     for table in (
         "chunk_fts",
         "embedding",
@@ -340,4 +378,200 @@ def index_stats(conn: sqlite3.Connection) -> dict:
         "embeddings": count("embedding"),
         "fts_rows": count("chunk_fts"),
         "summaries_cached": count("summary_cache"),
+        "snapshots": count("item_snapshot"),
+        "changes": count("item_change"),
     }
+
+
+# --------------------------------------------------------------------------
+# Observation history
+#
+# Phase 1 stores one row per source record, unique on (source_name, source_id),
+# with no revision table. A record's field values are therefore only knowable
+# at the moments Phase 2 looked at them. These helpers turn a sequence of index
+# builds into a change log without writing anything to the Phase 1 database.
+# --------------------------------------------------------------------------
+
+#: Metadata keys worth watching, by source. Everything else a source stores is
+#: a static identifier (nct_id, pmid, adsh, arxiv_id) that cannot change without
+#: becoming a different record.
+WATCHED_FIELDS: dict[str, tuple[str, ...]] = {
+    "ClinicalTrials.gov": ("overall_status", "lead_sponsor", "conditions"),
+    "SEC EDGAR": ("form", "period_ending"),
+    "PubMed (NCBI)": ("doi", "journal"),
+    "arXiv": ("doi",),
+}
+
+#: Human-readable names for the watched keys, used verbatim in the UI.
+FIELD_LABELS: dict[str, str] = {
+    "record": "Record",
+    "title": "Title",
+    "overall_status": "Trial status",
+    "lead_sponsor": "Lead sponsor",
+    "conditions": "Conditions",
+    "form": "Filing type",
+    "period_ending": "Reporting period",
+    "doi": "DOI",
+    "journal": "Journal",
+}
+
+FIRST_SEEN = "first seen"
+
+
+def field_label(field: str) -> str:
+    return FIELD_LABELS.get(field, field.replace("_", " ").capitalize())
+
+
+def _flatten(value: Any) -> Optional[str]:
+    """Render one metadata value as the string a diff compares and displays."""
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        parts = [str(v) for v in value if v is not None]
+        return ", ".join(parts) if parts else None
+    text = str(value).strip()
+    return text or None
+
+
+def tracked_fields(
+    source_name: str, title: Optional[str], metadata: dict[str, Any]
+) -> dict[str, str]:
+    """The watched values for one record, as flat strings. Absent keys are omitted."""
+    tracked: dict[str, str] = {}
+    if title and title.strip():
+        tracked["title"] = title.strip()
+    for key in WATCHED_FIELDS.get(source_name, ()):
+        flat = _flatten(metadata.get(key))
+        if flat is not None:
+            tracked[key] = flat
+    return tracked
+
+
+def _change_id(item_id: str, field: str, detected_at: str) -> str:
+    """Deterministic, so re-running a build cannot duplicate a change row."""
+    return hashlib.sha256(f"{item_id}|{field}|{detected_at}".encode()).hexdigest()[:32]
+
+
+def record_observation(
+    conn: sqlite3.Connection,
+    item_id: str,
+    content_hash: str,
+    tracked: dict[str, str],
+    first_seen_at: str,
+) -> list[dict[str, Any]]:
+    """Snapshot a record's watched fields and return whatever changed.
+
+    A record seen for the first time yields one change — ``record: first seen``,
+    dated by Phase 1's own ``date_ingested``, which is a real observation and not
+    a placeholder. Later builds yield one row per watched field that moved.
+    Re-observing a content hash already on file is a no-op.
+    """
+    row = conn.execute(
+        "SELECT seq, tracked_json FROM item_snapshot WHERE item_id = ? "
+        "ORDER BY seq DESC LIMIT 1",
+        (item_id,),
+    ).fetchone()
+    previous = json.loads(row["tracked_json"]) if row else None
+
+    seen_before = conn.execute(
+        "SELECT 1 FROM item_snapshot WHERE item_id = ? AND content_hash = ?",
+        (item_id, content_hash),
+    ).fetchone()
+    if seen_before:
+        return []
+
+    observed_at = first_seen_at if previous is None else now_iso()
+    conn.execute(
+        "INSERT INTO item_snapshot (item_id, content_hash, observed_at, tracked_json) "
+        "VALUES (?, ?, ?, ?)",
+        (item_id, content_hash, observed_at, json.dumps(tracked, sort_keys=True)),
+    )
+
+    changes: list[dict[str, Any]] = []
+    if previous is None:
+        changes.append(
+            {"field": "record", "before": None, "after": FIRST_SEEN, "detected_at": observed_at}
+        )
+    else:
+        for key in sorted(set(previous) | set(tracked)):
+            before, after = previous.get(key), tracked.get(key)
+            if before != after:
+                changes.append(
+                    {"field": key, "before": before, "after": after, "detected_at": observed_at}
+                )
+
+    for change in changes:
+        conn.execute(
+            "INSERT OR IGNORE INTO item_change "
+            "(change_id, item_id, field, before, after, detected_at) VALUES (?,?,?,?,?,?)",
+            (
+                _change_id(item_id, change["field"], change["detected_at"]),
+                item_id,
+                change["field"],
+                change["before"],
+                change["after"],
+                change["detected_at"],
+            ),
+        )
+    return changes
+
+
+def _change_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "field": row["field"],
+        "field_label": field_label(row["field"]),
+        "before": row["before"],
+        "after": row["after"],
+        "detected_at": row["detected_at"],
+        "is_first_seen": row["field"] == "record",
+    }
+
+
+def changes_for_items(
+    conn: sqlite3.Connection, item_ids: list[str]
+) -> dict[str, list[dict[str, Any]]]:
+    """item_id -> its changes, newest first. A field change outranks first-seen."""
+    if not item_ids:
+        return {}
+    out: dict[str, list[dict[str, Any]]] = {}
+    for start in range(0, len(item_ids), 400):
+        window = item_ids[start : start + 400]
+        placeholders = ",".join("?" * len(window))
+        rows = conn.execute(
+            f"""SELECT * FROM item_change WHERE item_id IN ({placeholders})
+                ORDER BY detected_at DESC, (field = 'record') ASC, field ASC""",
+            window,
+        ).fetchall()
+        for row in rows:
+            out.setdefault(row["item_id"], []).append(_change_row(row))
+    return out
+
+
+def changes_for_item(conn: sqlite3.Connection, item_id: str) -> list[dict[str, Any]]:
+    return changes_for_items(conn, [item_id]).get(item_id, [])
+
+
+def reviewed_map(conn: sqlite3.Connection, item_ids: list[str]) -> dict[str, bool]:
+    if not item_ids:
+        return {}
+    out: dict[str, bool] = {}
+    for start in range(0, len(item_ids), 400):
+        window = item_ids[start : start + 400]
+        placeholders = ",".join("?" * len(window))
+        for row in conn.execute(
+            f"SELECT item_id, reviewed FROM item_review WHERE item_id IN ({placeholders})",
+            window,
+        ):
+            out[row["item_id"]] = bool(row["reviewed"])
+    return out
+
+
+def set_reviewed(conn: sqlite3.Connection, item_id: str, reviewed: bool) -> bool:
+    conn.execute(
+        "INSERT INTO item_review (item_id, reviewed, reviewed_at) VALUES (?,?,?) "
+        "ON CONFLICT(item_id) DO UPDATE SET reviewed=excluded.reviewed, "
+        "reviewed_at=excluded.reviewed_at",
+        (item_id, int(reviewed), now_iso() if reviewed else None),
+    )
+    conn.commit()
+    return reviewed

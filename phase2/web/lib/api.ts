@@ -4,8 +4,12 @@ import type {
   FeedItem,
   ItemDetail,
   LandscapeStats,
+  Signal,
+  SignalDetail,
+  SignalFilters,
   Summary,
 } from "./types";
+import { userMessage } from "./errors";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -61,6 +65,59 @@ export async function fetchSummary(id: string): Promise<Summary> {
   return response.json();
 }
 
+// ---------------------------------------------------------------------------
+// Signals
+// ---------------------------------------------------------------------------
+
+export interface SignalPage {
+  items: Signal[];
+  total: number;
+  mode: string;
+}
+
+/** Filters the backend cannot express in SQL (urgency, indication) are applied
+ *  server-side all the same — the client never re-filters a page it was given,
+ *  or the totals and the rows would disagree. */
+export function fetchSignals(
+  filters: SignalFilters,
+  limit: number,
+  offset: number
+): Promise<SignalPage> {
+  const params = new URLSearchParams();
+  if (filters.q.trim()) params.set("q", filters.q.trim());
+  filters.sources.forEach((s) => params.append("source", s));
+  filters.verdicts.forEach((c) => params.append("category", c));
+  filters.kinds.forEach((k) => params.append("kind", k));
+  filters.urgency.forEach((u) => params.append("urgency", u));
+  filters.indications.forEach((i) => params.append("indication", i));
+  if (filters.reviewed !== "all") params.set("reviewed", filters.reviewed);
+  if (filters.changedOnly) params.set("changed_only", "true");
+  params.set("sort", filters.sort);
+  params.set("limit", String(limit));
+  params.set("offset", String(offset));
+  return get(`/api/signals?${params.toString()}`);
+}
+
+export const fetchSignal = (id: string) =>
+  get<SignalDetail>(`/api/signals/${encodeURIComponent(id)}`);
+
+/** Omit `reviewed` to toggle. */
+export async function setReviewed(
+  id: string,
+  reviewed?: boolean
+): Promise<{ item_id: string; reviewed: boolean }> {
+  const response = await fetch(
+    `${API_BASE}/api/signals/${encodeURIComponent(id)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reviewed === undefined ? {} : { reviewed }),
+    }
+  );
+  if (!response.ok) throw new Error(`Review failed: ${response.status}`);
+  return response.json();
+}
+
 export interface StreamHandlers {
   onEvidence?: (evidence: Evidence[], route: string, facts: string | null) => void;
   onFacts?: (facts: string) => void;
@@ -90,14 +147,14 @@ export async function streamChat(
       signal,
     });
   } catch (err) {
-    handlers.onError?.(
-      `Could not reach the API at ${API_BASE}. Is the backend running on port 8000?`
-    );
+    handlers.onError?.(userMessage("chat", err));
     return;
   }
 
   if (!response.ok || !response.body) {
-    handlers.onError?.(`API returned ${response.status}`);
+    handlers.onError?.(
+      userMessage("chat", `${response.status} ${response.statusText}`)
+    );
     return;
   }
 
@@ -141,7 +198,7 @@ export async function streamChat(
           handlers.onDone?.(payload.confidence ?? "", payload.citations ?? []);
           break;
         case "error":
-          handlers.onError?.(payload.message ?? "Unknown error");
+          handlers.onError?.(payload.message ?? userMessage("chat"));
           break;
       }
     }

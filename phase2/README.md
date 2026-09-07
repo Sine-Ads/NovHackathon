@@ -174,6 +174,93 @@ Anything written against the document works unchanged.
 
 ---
 
+## The signal view
+
+The feed reads the same corpus as a stream of *events* rather than a list of
+documents: urgency, category, indication, and what has been observed to change.
+Nothing here is a new ingestion — every field is derived from stored data, and
+anything the corpus cannot support is absent rather than guessed.
+
+| Derived field | Where it comes from |
+|---|---|
+| `category` | The source: ClinicalTrials.gov → Trial, PubMed/arXiv → Publication, SEC EDGAR → Corporate |
+| `indication` | Haemophilia A / B wording in the title and metadata; `null` when the record names neither |
+| `urgency` | completeness x recency x change x verdict, bucketed |
+| `what_changed` | The observation log below; `null` until something has moved |
+| `reviewed` | A human decision, stored in the sidecar |
+
+Urgency reuses `evidence.completeness_factor` and `evidence.recency_factor`
+unchanged, so a record cannot be urgent in the feed and unremarkable in search.
+The card's "why this urgency" panel prints the actual multipliers — multiply the
+column and the score comes back.
+
+The thresholds are calibrated against the corpus, not chosen in the abstract.
+With completeness capped at 1.00 and recency at 1.10, a record that has never
+been observed to change tops out at 1.07, so `HIGH` sits at 1.02: today that
+band is the 28 complete records carrying a real publication or filing date, and
+a trial that changes status (x1.50) clears it outright.
+
+**Fields the radar design carried that this corpus cannot support — geography,
+modality, and per-team review routing — are not in the type.** Phase 1 ingests
+none of them. An empty field is a fact about the corpus; an invented one is not.
+For the same reason the category list has three values and not eight: there is
+no regulatory, HTA, congress or safety source behind the others, and the filter
+rail is driven by facet counts so it can only ever offer what exists.
+
+### Change detection
+
+Phase 1 stores one row per source record, unique on `(source_name, source_id)`,
+with no revision table — so a field's history only exists if Phase 2 watches for
+it. Three sidecar tables do that, and the Phase 1 file stays byte-identical:
+
+| Table | Holds |
+|---|---|
+| `item_snapshot` | the watched fields at each distinct content hash |
+| `item_change` | one row per field that moved, with when it was noticed |
+| `item_review` | whether a human has marked the record reviewed |
+
+`build_index.py` records an observation for every record on every run, before
+the unchanged-hash shortcut — an index built before this existed has no
+snapshots at all, and re-observing a known hash writes nothing. Watched fields
+are `overall_status`, `lead_sponsor` and `conditions` for trials, `form` and
+`period_ending` for filings, `doi` and `journal` for literature, plus the title
+everywhere; the rest of each source's metadata is a static identifier.
+
+A first appearance is recorded as a real, dated observation
+(`record: first seen`, dated by Phase 1's `date_ingested`) rather than left
+blank — so the view has honest content on the first run, and true field-level
+diffs accumulate on top of it from the second run onward. Today every record is
+in that first state: the corpus was loaded in a single backfill, so ordering by
+detection date is ordering within that one run, and the UI says so instead of
+implying a spread.
+
+`--rebuild` drops the index but deliberately keeps these three tables. They
+record what was observed when, and a human's review decisions; discarding them
+would make every record look newly seen and silently rewrite the history.
+
+### Endpoints
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/signals` | the feed; same filters as `/api/feed` plus `kind`, `urgency`, `indication`, `reviewed`, `changed_only` |
+| `GET /api/signals/{item_id}` | one signal with its full change history and evidence |
+| `POST /api/signals/{item_id}/review` | toggles the reviewed flag |
+| `GET /api/facets` | gains `kinds`, `urgencies`, `indications` and the review counts |
+
+`/api/feed`, `/api/items/*`, `/api/papers*` and both chat endpoints are
+unchanged, so anything written against them keeps working.
+
+Urgency and indication are computed rather than stored, so those two filters and
+the urgency sort are applied after the SQL filters have cut the set down. At
+1,399 records that is one cheap pass; past a few tens of thousands they become
+columns on `item` written at index time.
+
+A search is never re-sorted. Asking for the best match and getting the answer
+reordered by urgency would misrepresent the ranking, so the sort control is
+disabled while a query is active.
+
+---
+
 ## Data-quality handling
 
 These are Phase 1 behaviours. That code is off-limits, so Phase 2 works around
@@ -190,8 +277,10 @@ them honestly rather than hiding them.
 | OpenFDA carries two record types | Branches on `metadata.type`; ready for when that ingestor returns rows |
 | Classifier needs `retracted` / `citation_count`, which no ingestor collects | Records stay unclassified rather than mis-verdicted; the UI says so |
 
-All 1,399 rows share one `date_ingested` (a single backfill), so there is no
-"new since last run" axis yet and no "new" badge is shown.
+All 1,399 rows were ingested in a single backfill, so while every record now
+carries a real first-seen date, they are all from that one run — the detection
+axis exists but is flat until a second ingestion, and the feed says so rather
+than implying a spread.
 
 ---
 
@@ -227,6 +316,7 @@ api/
   classifications.py  read-only verdicts; degrades when the table is absent
   embed.py        fastembed ONNX + in-memory vector index
   evidence.py     Evidence dataclass + evidence ranking
+  signals.py      derived category, indication, urgency; facet counts
   retrieval.py    FTS + vector + RRF + rollup
   router.py       aggregate | retrieval | both
   aggregates.py   whitelisted SQL, no model-written queries
@@ -239,8 +329,18 @@ api/
   main.py         FastAPI routes + SSE
 scripts/          check_env.py, build_index.py, run_eval.py
 eval/golden.yaml  the golden question set
-web/              Next.js frontend
+web/
+  app/            shell, radar feed, signal detail, assistant
+  components/     signal views (Tailwind) + record views (plain CSS)
+  hooks/          react-query access to the signal endpoints
+  lib/            API client, types, role presets, failure copy
 ```
+
+The frontend runs two styling systems on one palette: the shell, feed and signal
+detail are Tailwind, while the summary panel, both chatbots and the confidence
+badges keep the plain CSS they shipped with. `tailwind.config.ts` and the
+variables at the top of `app/globals.css` hold the same values, so the two
+cannot drift.
 
 ### Chunk-ready by design
 

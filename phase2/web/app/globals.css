@@ -1,31 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+/*
+ * Two styling systems, one palette.
+ *
+ * The shell, the feed and the signal detail view are Tailwind. The summary
+ * panel, both chatbots, the evidence chips and the confidence badges are the
+ * plain CSS below, unchanged in structure since Phase 2 shipped them. The
+ * variables here hold exactly the values in tailwind.config.ts, so the two
+ * cannot drift: a component written either way lands on the same colours.
+ */
 :root {
-  --bg: #0f1117;
-  --panel: #171a23;
-  --panel-2: #1e222d;
-  --border: #2a2f3d;
-  --text: #e6e8ee;
-  --muted: #9aa3b5;
-  --accent: #5b9dff;
-  --accent-dim: #2f4d80;
-  --good: #46c88a;
-  --warn: #e0a94a;
-  --bad: #e8695f;
+  color-scheme: light;
+
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --panel-2: #f6f7f9;
+  --border: #e1e4e9;
+  --text: #1a2130;
+  --muted: #5b6472;
+  --accent: #1f5f5b;
+  --accent-soft: #e4eeec;
+  --good: #4b7a5e;
+  --good-soft: #e7f0ea;
+  --good-line: #c6dacd;
+  --warn: #b07a2e;
+  --warn-soft: #f5ebdc;
+  --warn-line: #e4d3b8;
+  --bad: #b8452f;
+  --bad-soft: #f6e6e2;
+  --bad-line: #e8c7be;
   --radius: 10px;
 }
 
-* { box-sizing: border-box; }
+html,
+body {
+  height: 100%;
+}
 
-html, body {
+body {
   margin: 0;
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 a { color: var(--accent); }
+
+::selection { background: var(--accent-soft); }
+
+/* Visible keyboard focus, kept identical across Tailwind and legacy controls. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
 .shell { max-width: 1080px; margin: 0 auto; padding: 24px 20px 120px; }
 
@@ -43,47 +90,11 @@ header.masthead p { margin: 0; color: var(--muted); font-size: 13px; }
 .stat .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .caveats { color: var(--muted); font-size: 12px; margin-top: 6px; }
 .caveats summary { cursor: pointer; color: var(--accent); }
-.caveats ul { margin: 8px 0 0; padding-left: 18px; }
+/* Tailwind's preflight strips list markers; the caveats read as a list. */
+.caveats ul { margin: 8px 0 0; padding-left: 18px; list-style: disc; }
 
-/* --- filters --- */
-.filters {
-  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 12px; margin-bottom: 16px;
-}
-.filters input[type="search"], .filters select {
-  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
-  border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: inherit;
-}
-.filters input[type="search"] { flex: 1; min-width: 220px; }
-.chip {
-  background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
-  border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer;
-}
-.chip.on { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
-
-/* --- feed --- */
-.card {
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: var(--radius); margin-bottom: 10px; overflow: hidden;
-}
-.card.open { border-color: var(--accent-dim); }
-.card-head { padding: 13px 15px; cursor: pointer; }
-.card-head:hover { background: var(--panel-2); }
-.card-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--muted); margin-bottom: 5px; }
-.card-title { font-size: 14.5px; font-weight: 550; margin: 0 0 5px; }
-.card-snip { color: var(--muted); font-size: 12.5px; margin: 0; }
-.badge {
-  border: 1px solid var(--border); border-radius: 5px; padding: 1px 7px;
-  font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em;
-}
-.badge.src { background: var(--accent-dim); border-color: var(--accent-dim); color: #cfe0ff; }
-.badge.stub { background: #3a2f1a; border-color: #5c4726; color: var(--warn); }
-.badge.planned { background: #1e3524; border-color: #2f5c3c; color: var(--good); }
-.why { color: var(--accent); font-size: 11.5px; margin-top: 5px; font-style: italic; }
-
-/* --- expanded --- */
-.expanded { border-top: 1px solid var(--border); padding: 15px; background: var(--panel-2); }
+/* --- expanded record panel --- */
+.expanded { border-top: 1px solid var(--border); padding: 15px; background: var(--panel); }
 .section { margin-bottom: 16px; }
 .section h4 {
   font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
@@ -92,7 +103,7 @@ header.masthead p { margin: 0; color: var(--muted); font-size: 13px; }
 .facts { list-style: none; margin: 0; padding: 0; }
 .facts li { padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .facts li:last-child { border-bottom: none; }
-.fn { display: inline-block; background: var(--accent-dim); color: #dbe7ff;
+.fn { display: inline-block; background: var(--accent-soft); color: var(--accent);
       border-radius: 5px; padding: 3px 9px; font-size: 11.5px; margin: 0 5px 5px 0; }
 .related { display: flex; flex-direction: column; gap: 6px; }
 .related button {
@@ -102,11 +113,19 @@ header.masthead p { margin: 0; color: var(--muted); font-size: 13px; }
 .related button:hover { border-color: var(--accent); }
 .related .r-why { color: var(--muted); font-size: 11px; margin-top: 3px; }
 
+.badge {
+  border: 1px solid var(--border); border-radius: 5px; padding: 1px 7px;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em;
+}
+.badge.src { background: var(--accent-soft); border-color: var(--accent-soft); color: var(--accent); }
+.badge.stub { background: var(--warn-soft); border-color: var(--warn-line); color: var(--warn); }
+.badge.planned { background: var(--good-soft); border-color: var(--good-line); color: var(--good); }
+
 /* --- chat --- */
 .chat { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
 .chat-log { max-height: 340px; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .msg { max-width: 92%; }
-.msg.user { align-self: flex-end; background: var(--accent-dim); color: #fff;
+.msg.user { align-self: flex-end; background: var(--accent-soft); color: var(--accent);
             padding: 8px 11px; border-radius: 10px 10px 2px 10px; }
 .msg.assistant { align-self: flex-start; }
 .msg-body { white-space: pre-wrap; }
@@ -116,7 +135,7 @@ header.masthead p { margin: 0; color: var(--muted); font-size: 13px; }
   color: var(--text); border-radius: 8px; padding: 9px 11px; font: inherit;
 }
 .chat-input button, .btn {
-  background: var(--accent); color: #06101f; border: none; border-radius: 8px;
+  background: var(--accent); color: #ffffff; border: none; border-radius: 8px;
   padding: 9px 15px; font-weight: 600; cursor: pointer; font: inherit;
 }
 .chat-input button:disabled { opacity: .45; cursor: not-allowed; }
@@ -125,15 +144,16 @@ header.masthead p { margin: 0; color: var(--muted); font-size: 13px; }
   background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
   border-radius: 999px; padding: 5px 11px; font-size: 11.5px; cursor: pointer;
 }
+.suggestions button:hover { border-color: var(--accent); color: var(--accent); }
 
 /* --- confidence --- */
 .conf { display: inline-flex; align-items: center; gap: 5px; border-radius: 5px;
         padding: 2px 8px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; }
-.conf.supported { background: #14301f; color: var(--good); border: 1px solid #245c3a; }
-.conf.inferred { background: #32290f; color: var(--warn); border: 1px solid #5c4a1e; }
+.conf.supported { background: var(--good-soft); color: var(--good); border: 1px solid var(--good-line); }
+.conf.inferred { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn-line); }
 /* Deliberately distinct: a stakeholder must see at a glance that the system
    declined rather than answered. */
-.conf.insufficient { background: #3a1d1a; color: var(--bad); border: 1px solid #6e332c; }
+.conf.insufficient { background: var(--bad-soft); color: var(--bad); border: 1px solid var(--bad-line); }
 
 /* --- evidence --- */
 .evidence { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
@@ -143,22 +163,23 @@ header.masthead p { margin: 0; color: var(--muted); font-size: 13px; }
 }
 .ev-chip:hover { border-color: var(--accent); color: var(--text); }
 .facts-block {
-  background: #10202e; border: 1px solid #21445e; border-radius: 8px;
-  padding: 9px 11px; font-family: ui-monospace, monospace; font-size: 11.5px;
-  white-space: pre-wrap; margin-top: 7px; color: #b9d8ef;
+  background: var(--accent-soft); border: 1px solid #c3dad7; border-radius: 8px;
+  padding: 9px 11px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11.5px;
+  white-space: pre-wrap; margin-top: 7px; color: var(--accent);
 }
 
 /* --- global dock --- */
 .dock-btn {
   position: fixed; right: 22px; bottom: 22px; z-index: 40;
-  background: var(--accent); color: #06101f; border: none; border-radius: 999px;
+  background: var(--accent); color: #ffffff; border: none; border-radius: 999px;
   padding: 13px 20px; font-weight: 650; cursor: pointer; font: inherit;
-  box-shadow: 0 6px 24px rgba(0,0,0,.45);
+  box-shadow: 0 6px 24px rgba(26, 33, 48, .18);
 }
 .dock {
   position: fixed; right: 0; top: 0; bottom: 0; width: min(460px, 100vw);
   background: var(--panel); border-left: 1px solid var(--border);
   z-index: 50; display: flex; flex-direction: column;
+  box-shadow: -8px 0 32px rgba(26, 33, 48, .10);
 }
 .dock-head { display: flex; justify-content: space-between; align-items: center;
              padding: 14px 16px; border-bottom: 1px solid var(--border); }
@@ -178,10 +199,10 @@ header.masthead p { margin: 0; color: var(--muted); font-size: 13px; }
 
 /* --- classifier verdicts --- */
 .badge.verdict { font-weight: 600; }
-.badge.verdict.proven_right { background: #14301f; border-color: #245c3a; color: var(--good); }
-.badge.verdict.proven_false { background: #3a1d1a; border-color: #6e332c; color: var(--bad); }
-.badge.verdict.proven_false_but_useful { background: #32290f; border-color: #5c4a1e; color: var(--warn); }
-.badge.verdict.still_working_on { background: #17293d; border-color: #2b4a6b; color: #7fb4ec; }
+.badge.verdict.proven_right { background: var(--good-soft); border-color: var(--good-line); color: var(--good); }
+.badge.verdict.proven_false { background: var(--bad-soft); border-color: var(--bad-line); color: var(--bad); }
+.badge.verdict.proven_false_but_useful { background: var(--warn-soft); border-color: var(--warn-line); color: var(--warn); }
+.badge.verdict.still_working_on { background: #eaeff5; border-color: #c9d6e4; color: #3b5f86; }
 /* Deliberately grey: a failed classification is an absence of a verdict, not a verdict. */
 .badge.verdict.failed { background: var(--panel-2); border-color: var(--border); color: var(--muted); }
 

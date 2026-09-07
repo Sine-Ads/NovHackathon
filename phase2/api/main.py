@@ -17,6 +17,7 @@ from api import (
     embed,
     landscape,
     retrieval,
+    signals as signals_mod,
     source_db,
     store,
     summarize,
@@ -162,12 +163,20 @@ def facets() -> dict:
         }
         for name, count in verdicts["by_category"].items()
     ]
+    derived = signals_mod.facet_counts(side(), src())
     return {
         "sources": sources,
         "trial_statuses": statuses,
         "categories": categories,
         "classifications_available": verdicts["available"],
         "failed_count": verdicts["failed"],
+        # Derived dimensions, so the filter rail offers only what the corpus has.
+        "kinds": derived["kinds"],
+        "urgencies": derived["urgencies"],
+        "indications": derived["indications"],
+        "reviewed_count": derived["reviewed_count"],
+        "unreviewed_count": derived["unreviewed_count"],
+        "with_change_count": derived["with_change_count"],
     }
 
 
@@ -347,6 +356,177 @@ def item_similar(item_id: str, k: int = Query(6, ge=1, le=20)) -> dict:
     for hit in hits:
         hit.classification = verdicts.get(hit.item_id)
     return {"item_id": item_id, "similar": [h.to_dict() for h in hits]}
+
+
+# ---------------------------------------------------------------------------
+# Signals
+#
+# The same corpus as /api/feed, seen as events rather than documents. Urgency
+# and indication are derived per row rather than stored, so those two filters
+# and the urgency sort are applied in Python after the SQL filters have cut the
+# set down. At corpus scale (1,399 records) that is a single cheap pass.
+# ---------------------------------------------------------------------------
+
+SIGNAL_COLUMNS = """SELECT i.*, substr(c.text, 1, 400) snippet
+                    FROM item i LEFT JOIN chunk c
+                      ON c.item_id = i.item_id AND c.chunk_index = 0"""
+
+URGENCY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+
+
+def _desc(value: Optional[str]) -> tuple:
+    """Sort key that puts later dates first without reversing the whole tuple."""
+    return tuple(-ord(c) for c in (value or ""))
+
+
+def _signal_rows(
+    q: Optional[str],
+    source: Optional[list[str]],
+    status: Optional[list[str]],
+    allowed_ids: Optional[set[str]],
+) -> tuple[list[sqlite3.Row], dict[str, str], str]:
+    """Rows matching the SQL-expressible filters, plus per-row match reasons."""
+    if q:
+        hits = retrieval.hybrid_search(
+            side(), STATE["index"], q, k=200, sources=source, statuses=status
+        )
+        if allowed_ids is not None:
+            hits = [h for h in hits if h.item_id in allowed_ids]
+        if not hits:
+            return [], {}, "relevance"
+        ids = [h.item_id for h in hits]
+        placeholders = ",".join("?" * len(ids))
+        by_id = {
+            r["item_id"]: r
+            for r in side().execute(
+                f"{SIGNAL_COLUMNS} WHERE i.item_id IN ({placeholders})", ids
+            )
+        }
+        rows = [by_id[h.item_id] for h in hits if h.item_id in by_id]
+        return rows, {h.item_id: h.reason for h in hits}, "relevance"
+
+    where, params = ["1=1"], []
+    if source:
+        where.append(f"i.source_name IN ({','.join('?' * len(source))})")
+        params += source
+    if status:
+        where.append(
+            f"json_extract(i.metadata_json,'$.overall_status') IN "
+            f"({','.join('?' * len(status))})"
+        )
+        params += [s.upper() for s in status]
+    if allowed_ids is not None:
+        if not allowed_ids:
+            return [], {}, "browse"
+        where.append(f"i.item_id IN ({','.join('?' * len(allowed_ids))})")
+        params += sorted(allowed_ids)
+    clause = " AND ".join(where)
+    rows = side().execute(f"{SIGNAL_COLUMNS} WHERE {clause}", params).fetchall()
+    return rows, {}, "browse"
+
+
+@app.get("/api/signals")
+def signals_feed(
+    q: Optional[str] = None,
+    source: Optional[list[str]] = Query(None),
+    status: Optional[list[str]] = Query(None),
+    category: Optional[list[str]] = Query(None, description="Phase 1 classifier verdict"),
+    kind: Optional[list[str]] = Query(None, description="Derived category: Trial, Publication…"),
+    urgency: Optional[list[str]] = Query(None),
+    indication: Optional[list[str]] = Query(None),
+    reviewed: Optional[str] = Query(None, pattern="^(all|reviewed|unreviewed)$"),
+    changed_only: bool = False,
+    sort: str = "urgency",
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    allowed_ids: Optional[set[str]] = None
+    if category:
+        allowed_ids = set()
+        for name in category:
+            allowed_ids |= classifications.ids_in_category(src(), name)
+
+    rows, reasons, mode = _signal_rows(q, source, status, allowed_ids)
+    built = signals_mod.build(side(), src(), rows)
+    for signal in built:
+        if signal["id"] in reasons:
+            signal["match_reason"] = reasons[signal["id"]]
+
+    if kind:
+        wanted = set(kind)
+        built = [s for s in built if s["category"] in wanted]
+    if urgency:
+        wanted = {u.upper() for u in urgency}
+        built = [s for s in built if s["urgency"] in wanted]
+    if indication:
+        # "unstated" is a selectable value: a record that names no indication is
+        # a real thing to filter for, not a gap to hide.
+        wanted = set(indication)
+        built = [
+            s
+            for s in built
+            if (s["indication"] or "Indication unstated") in wanted
+        ]
+    if reviewed == "reviewed":
+        built = [s for s in built if s["reviewed"]]
+    elif reviewed == "unreviewed":
+        built = [s for s in built if not s["reviewed"]]
+    if changed_only:
+        built = [s for s in built if s["what_changed"] is not None]
+
+    # Relevance order is the retrieval ranking and is never re-sorted; asking
+    # for the best match and getting it reordered by urgency would be a lie.
+    if mode != "relevance":
+        if sort == "urgency":
+            built.sort(
+                key=lambda s: (URGENCY_ORDER[s["urgency"]], -s["score"], s["detected_date"] or ""),
+            )
+        elif sort == "detected":
+            built.sort(key=lambda s: s["detected_date"] or "", reverse=True)
+        elif sort == "date":
+            # Undated rows go last rather than first: 268 of 299 PubMed records
+            # have no publication date, and an empty string sorts before every
+            # real one.
+            built.sort(
+                key=lambda s: (s["date_published"] is None, _desc(s["date_published"]))
+            )
+        elif sort == "title":
+            built.sort(key=lambda s: (s["title"] or "").lower())
+        elif sort == "source":
+            built.sort(key=lambda s: (s["source_name"], s["date_published"] or ""))
+
+    total = len(built)
+    return {"items": built[offset : offset + limit], "total": total, "mode": mode}
+
+
+@app.get("/api/signals/{item_id}")
+def signal_detail(item_id: str) -> dict:
+    row = side().execute(
+        f"{SIGNAL_COLUMNS} WHERE i.item_id = ?", (item_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, f"Unknown item {item_id}")
+    built = signals_mod.build(side(), src(), [row])[0]
+    built["changes"] = store.changes_for_item(side(), item_id)
+    built["evidence"] = signals_mod.evidence_for(
+        side(), src(), STATE["index"], item_id, k=6
+    )
+    return built
+
+
+@app.post("/api/signals/{item_id}/review")
+def signal_review(item_id: str, body: dict = Body(default=None)) -> dict:
+    exists = side().execute(
+        "SELECT 1 FROM item WHERE item_id = ?", (item_id,)
+    ).fetchone()
+    if exists is None:
+        raise HTTPException(404, f"Unknown item {item_id}")
+    current = store.reviewed_map(side(), [item_id]).get(item_id, False)
+    wanted = (body or {}).get("reviewed")
+    reviewed = (not current) if wanted is None else bool(wanted)
+    store.set_reviewed(side(), item_id, reviewed)
+    signals_mod.invalidate_facets()
+    return {"item_id": item_id, "reviewed": reviewed}
 
 
 # ---------------------------------------------------------------------------

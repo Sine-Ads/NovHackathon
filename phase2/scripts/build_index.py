@@ -48,12 +48,27 @@ def main() -> int:
         known = store.existing_hashes(side)
         seen: set[str] = set()
         inserted = updated = unchanged = 0
+        detected = 0
 
         print(f"Reading {config.source_db_path()}")
         for item in source_db.iter_items(src):
             seen.add(item.item_id)
             digest = chunker.content_hash(item)
             previous = known.get(item.item_id)
+
+            # Observation is recorded before the unchanged shortcut: an index
+            # built before change detection existed has no snapshots at all, and
+            # every one of its records is unchanged. Re-observing a hash already
+            # on file costs one indexed lookup and writes nothing.
+            detected += len(
+                store.record_observation(
+                    side,
+                    item.item_id,
+                    digest,
+                    store.tracked_fields(item.source_name, item.title, item.metadata),
+                    first_seen_at=item.date_ingested,
+                )
+            )
 
             if previous == digest:
                 unchanged += 1
@@ -94,6 +109,7 @@ def main() -> int:
             f"Items: {inserted} inserted, {updated} updated, "
             f"{unchanged} unchanged, {removed} removed"
         )
+        print(f"Changes detected this build: {detected}")
 
         embedded = 0
         if not args.skip_embeddings:

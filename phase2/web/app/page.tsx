@@ -1,160 +1,164 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { fetchFacets, fetchFeed, fetchLandscape } from "@/lib/api";
-import type { Facets, FeedItem, LandscapeStats } from "@/lib/types";
-import { FeedCard } from "@/components/FeedCard";
-import { Filters, type FilterState } from "@/components/Filters";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { fetchLandscape } from "@/lib/api";
+import { userMessage } from "@/lib/errors";
+import type { SignalFilters } from "@/lib/types";
+import { ROLE_FOCUS } from "@/lib/roles";
+import { PAGE_SIZE, useFacets, useSignals } from "@/hooks/useSignals";
+import { useRole } from "./providers";
+import { FilterRail } from "@/components/FilterRail";
 import { GlobalChatDock } from "@/components/GlobalChatDock";
 import { LandscapeStrip } from "@/components/LandscapeStrip";
+import { SignalRow } from "@/components/SignalRow";
 
-const PAGE_SIZE = 25;
+const EMPTY: SignalFilters = {
+  q: "",
+  urgency: [],
+  kinds: [],
+  indications: [],
+  sources: [],
+  verdicts: [],
+  reviewed: "all",
+  changedOnly: false,
+  sort: "urgency",
+};
 
-export default function Page() {
-  const [facets, setFacets] = useState<Facets | null>(null);
-  const [stats, setStats] = useState<LandscapeStats | null>(null);
-  const [items, setItems] = useState<FeedItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [mode, setMode] = useState("browse");
+const SORTS = [
+  { value: "urgency", label: "Urgency" },
+  { value: "detected", label: "Recently detected" },
+  { value: "date", label: "Publication date" },
+  { value: "title", label: "Title" },
+  { value: "source", label: "Source" },
+];
+
+export default function RadarFeedPage() {
+  const router = useRouter();
+  const { role } = useRole();
+  const [filters, setFilters] = useState<SignalFilters>(EMPTY);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [page, setPage] = useState(0);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<FilterState>({
-    q: "",
-    sources: [],
-    statuses: [],
-    categories: [],
-    sort: "date",
-  });
 
+  // Only the search box is debounced — a checkbox should apply on the click.
   useEffect(() => {
-    fetchFacets().then(setFacets).catch(() => undefined);
-    fetchLandscape().then(setStats).catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
-    // Debounced so typing in the search box does not fire a request per keystroke.
-    const handle = setTimeout(() => {
-      setLoading(true);
-      setError(null);
-      fetchFeed({
-        q: filters.q || undefined,
-        sources: filters.sources,
-        statuses: filters.statuses,
-        categories: filters.categories,
-        sort: filters.sort,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      })
-        .then((data) => {
-          setItems(data.items);
-          setTotal(data.total);
-          setMode(data.mode);
-        })
-        .catch((e) =>
-          setError(
-            `Could not load the feed (${e}). Is the API running on port 8000?`
-          )
-        )
-        .finally(() => setLoading(false));
-    }, 300);
+    const handle = setTimeout(() => setDebouncedQuery(filters.q), 300);
     return () => clearTimeout(handle);
-  }, [filters, page]);
+  }, [filters.q]);
 
-  const changeFilters = useCallback((next: FilterState) => {
-    setFilters(next);
-    setPage(0);
-    setOpenId(null);
-  }, []);
-
-  /** Open a record by id, pulling it into the feed if it is not on this page. */
-  const openItem = useCallback(
-    async (itemId: string) => {
-      const present = items.some((i) => i.item_id === itemId);
-      if (!present) {
-        const data = await fetchFeed({ limit: 1, offset: 0 }).catch(() => null);
-        if (data) {
-          // Fall back to a direct lookup through search so the card can render.
-          const found = await fetchFeed({ q: itemId, limit: 1 }).catch(() => null);
-          if (found?.items.length) setItems((prev) => [found.items[0], ...prev]);
-        }
-      }
-      setOpenId(itemId);
-      setTimeout(
-        () =>
-          document
-            .getElementById(`item-${itemId}`)
-            ?.scrollIntoView({ behavior: "smooth", block: "center" }),
-        80
-      );
-    },
-    [items]
+  const applied = useMemo(
+    () => ({ ...filters, q: debouncedQuery }),
+    [filters, debouncedQuery]
   );
 
-  const pages = Math.ceil(total / PAGE_SIZE);
+  // A role is a preset, not a hidden filter: it writes into the same rail the
+  // reader can see and change.
+  useEffect(() => {
+    const focus = ROLE_FOCUS[role];
+    setFilters((current) => ({ ...current, kinds: focus.kinds, verdicts: focus.verdicts }));
+    setPage(0);
+  }, [role]);
+
+  const { data: facets } = useFacets();
+  const { data: stats } = useQuery({ queryKey: ["landscape"], queryFn: fetchLandscape });
+  const { data, isPending, isFetching, error } = useSignals(applied, page);
+
+  const change = useCallback((next: SignalFilters) => {
+    setFilters(next);
+    setPage(0);
+  }, []);
+
+  const pages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
+  const presetActive = ROLE_FOCUS[role].kinds.length > 0 || ROLE_FOCUS[role].verdicts.length > 0;
 
   return (
-    <main className="shell">
-      <header className="masthead">
-        <h1>Haemophilia Intelligence Radar</h1>
-        <p>
-          Clinical trials, literature, preprints and corporate filings — searched
-          together, with every answer showing what it stands on.
-        </p>
-      </header>
+    <div className="flex h-full">
+      <FilterRail facets={facets} filters={filters} onChange={change} />
 
-      <LandscapeStrip stats={stats} />
-      <Filters facets={facets} state={filters} onChange={changeFilters} />
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="border-b border-border px-4 py-3">
+          <LandscapeStrip stats={stats ?? null} />
+        </div>
 
-      {error && <p className="error">{error}</p>}
-      {loading && <p className="spinner">Loading…</p>}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-paper px-4 py-2">
+          <span className="text-[11px] text-ink-muted">
+            {error ? (
+              <span className="text-high">{userMessage("feed", error)}</span>
+            ) : isPending ? (
+              "Loading signals…"
+            ) : (
+              <>
+                {data?.total.toLocaleString()} signal{data?.total === 1 ? "" : "s"}
+                {data?.mode === "relevance" ? " ranked by relevance" : ""}
+                {presetActive ? ` · preset for ${role}` : ""}
+                {isFetching ? " · updating" : ""}
+              </>
+            )}
+          </span>
 
-      {!loading && !error && (
-        <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>
-          {total.toLocaleString()} record{total === 1 ? "" : "s"}
-          {mode === "relevance" ? " ranked by relevance" : ""}
-          {mode === "browse" && filters.sort === "date"
-            ? " — dates mean different things by source, so each card says which it shows"
-            : ""}
-        </p>
-      )}
+          <label className="flex items-center gap-2 text-[11px] text-ink-muted">
+            Sort
+            <select
+              value={filters.sort}
+              disabled={data?.mode === "relevance"}
+              onChange={(event) => change({ ...filters, sort: event.target.value })}
+              className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] text-ink disabled:opacity-50 focus-visible:outline-none"
+              title={
+                data?.mode === "relevance"
+                  ? "A search is ordered by how well each record matches; re-sorting it would misrepresent the ranking."
+                  : undefined
+              }
+            >
+              {SORTS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
-      {!loading &&
-        items.map((item) => (
-          <FeedCard
-            key={item.item_id}
-            item={item}
-            open={openId === item.item_id}
-            onToggle={() =>
-              setOpenId(openId === item.item_id ? null : item.item_id)
-            }
-            onOpenItem={openItem}
-          />
+        {filters.sort === "detected" && facets?.with_change_count === 0 && (
+          <p className="border-b border-border px-4 py-2 text-[11px] leading-relaxed text-ink-muted">
+            Every record was first seen in the same backfill run, so this
+            ordering is the order that run inserted them — not a spread of
+            detection dates. It becomes meaningful after a second ingestion.
+          </p>
+        )}
+
+        {data?.items.map((signal) => (
+          <SignalRow key={signal.id} signal={signal} />
         ))}
 
-      {!loading && items.length === 0 && !error && (
-        <p className="muted">No records match those filters.</p>
-      )}
+        {data && data.items.length === 0 && !error && (
+          <p className="p-6 text-sm text-ink-muted">No signals match the current filters.</p>
+        )}
 
-      {pages > 1 && (
-        <div className="pager">
-          <button disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-            ← Previous
-          </button>
-          <span className="muted" style={{ alignSelf: "center" }}>
-            Page {page + 1} of {pages}
-          </span>
-          <button
-            disabled={page + 1 >= pages}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next →
-          </button>
-        </div>
-      )}
+        {pages > 1 && (
+          <div className="flex items-center justify-center gap-3 p-4 text-xs">
+            <button
+              className="rounded-md border border-border bg-surface px-3 py-1.5 text-ink disabled:opacity-40"
+              disabled={page === 0}
+              onClick={() => setPage((value) => value - 1)}
+            >
+              Previous
+            </button>
+            <span className="text-ink-muted">
+              Page {page + 1} of {pages}
+            </span>
+            <button
+              className="rounded-md border border-border bg-surface px-3 py-1.5 text-ink disabled:opacity-40"
+              disabled={page + 1 >= pages}
+              onClick={() => setPage((value) => value + 1)}
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </div>
 
-      <GlobalChatDock onOpenItem={openItem} />
-    </main>
+      <GlobalChatDock onOpenItem={(id) => router.push(`/signal/${encodeURIComponent(id)}`)} />
+    </div>
   );
 }
